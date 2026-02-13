@@ -1,0 +1,32 @@
+# Xcode
+build/
+DerivedData/
+*.xcuserstate
+*.xcuserdatad
+xcuserdata/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.moved-aside
+
+# Swift Package Manager
+.build/
+Packages/
+Package.resolved
+
+# CocoaPods (if ever used)
+Pods/
+
+# Secrets and config
+.env
+**/Config/Secrets.swift
+supabase/.env
+
+# OS files
+.DS_Store
+*.swp
+*~
+
+# Supabase local
+supabase/.temp/
