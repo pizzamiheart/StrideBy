@@ -11,10 +11,13 @@ struct RouteProgressCard: View {
     let route: RunRoute
     let progress: UserProgress
     var isSyncing: Bool = false
+    var isComplete: Bool = false
+    var onLookAroundHere: (() -> Void)?
+    var onLookAroundNearestPOI: (() -> Void)?
 
     private var percentComplete: Double {
         guard route.totalDistanceMiles > 0 else { return 0 }
-        return progress.completedMiles / route.totalDistanceMiles
+        return min(progress.completedMiles / route.totalDistanceMiles, 1.0)
     }
 
     private var upcomingLandmarks: [Landmark] {
@@ -36,7 +39,11 @@ struct RouteProgressCard: View {
                         .foregroundStyle(.primary)
 
                     HStack(spacing: 4) {
-                        if progress.completedMiles > 0 {
+                        if isComplete {
+                            Text("Route Complete!")
+                                .foregroundStyle(StrideByTheme.accent)
+                                .fontWeight(.medium)
+                        } else if progress.completedMiles > 0 {
                             Text("Near \(progress.nearestLocationName)")
                         } else {
                             Text("Starting in \(route.origin)")
@@ -53,12 +60,19 @@ struct RouteProgressCard: View {
 
                 Spacer()
 
-                Text("\(Int(percentComplete * 100))%")
-                    .font(.title2)
-                    .fontWeight(.bold)
-                    .foregroundStyle(StrideByTheme.accent)
-                    .contentTransition(.numericText())
-                    .animation(StrideByTheme.defaultSpring, value: percentComplete)
+                if isComplete {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(StrideByTheme.accent)
+                        .symbolEffect(.bounce, value: isComplete)
+                } else {
+                    Text("\(Int(percentComplete * 100))%")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundStyle(StrideByTheme.accent)
+                        .contentTransition(.numericText())
+                        .animation(StrideByTheme.defaultSpring, value: percentComplete)
+                }
             }
 
             // Progress bar
@@ -96,8 +110,48 @@ struct RouteProgressCard: View {
                 }
             }
 
-            // Upcoming landmarks
-            if !upcomingLandmarks.isEmpty {
+            // Look Around buttons — shown when in progress and not complete
+            if progress.completedMiles > 0 && !isComplete {
+                HStack(spacing: 10) {
+                    if onLookAroundHere != nil {
+                        Button {
+                            onLookAroundHere?()
+                        } label: {
+                            Label("Look Around", systemImage: "binoculars.fill")
+                                .font(.caption)
+                                .fontWeight(.medium)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(StrideByTheme.accent)
+                        .controlSize(.small)
+                    }
+
+                    if onLookAroundNearestPOI != nil {
+                        Button {
+                            onLookAroundNearestPOI?()
+                        } label: {
+                            Label("Nearest Place", systemImage: "building.2.fill")
+                                .font(.caption)
+                                .fontWeight(.medium)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(StrideByTheme.accent)
+                        .controlSize(.small)
+                    }
+
+                    Spacer()
+                }
+            }
+
+            // Completion celebration or upcoming landmarks
+            if isComplete {
+                VStack(spacing: 8) {
+                    Text("You ran \(route.origin) to \(route.destination)!")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                }
+            } else if !upcomingLandmarks.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("AHEAD")
                         .font(.caption2)
@@ -132,10 +186,21 @@ struct RouteProgressCard: View {
     }
 }
 
-#Preview {
+#Preview("In Progress") {
     RouteProgressCard(
         route: .nycToLA,
-        progress: UserProgress(completedMiles: 847, nearestLocationName: "Terre Haute, IN")
+        progress: UserProgress(completedMiles: 847, nearestLocationName: "Terre Haute, IN"),
+        onLookAroundHere: {},
+        onLookAroundNearestPOI: {}
+    )
+    .padding()
+}
+
+#Preview("Complete") {
+    RouteProgressCard(
+        route: .nycToLA,
+        progress: UserProgress(completedMiles: 2790, nearestLocationName: "Los Angeles, CA"),
+        isComplete: true
     )
     .padding()
 }

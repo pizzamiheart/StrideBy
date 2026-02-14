@@ -75,6 +75,28 @@ final class RunProgressManager {
         }
     }
 
+    // MARK: - Debug
+
+    #if DEBUG
+    /// Adds simulated miles for testing. Only available in debug builds.
+    func addDebugMiles(_ miles: Double) {
+        totalMiles += miles
+        runCount += 1
+        UserDefaults.standard.set(totalMiles, forKey: "strideby_total_miles")
+        UserDefaults.standard.set(runCount, forKey: "strideby_run_count")
+    }
+
+    /// Resets all progress to zero. Only available in debug builds.
+    func resetDebugProgress() {
+        totalMiles = 0
+        runCount = 0
+        hasSynced = false
+        UserDefaults.standard.set(0.0, forKey: "strideby_total_miles")
+        UserDefaults.standard.set(0, forKey: "strideby_run_count")
+        UserDefaults.standard.set(false, forKey: "strideby_has_synced")
+    }
+    #endif
+
     // MARK: - Private
 
     private func fetchPage(token: String, page: Int) async throws -> [StravaActivity] {

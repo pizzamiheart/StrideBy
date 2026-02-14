@@ -10,12 +10,13 @@ import SwiftUI
 struct ProfileScreen: View {
     @Environment(StravaAuthService.self) private var stravaAuth
     @Environment(RunProgressManager.self) private var progressManager
-
-    private let route: RunRoute = .nycToLA
+    @Environment(RouteManager.self) private var routeManager
 
     private var percentComplete: Int {
-        guard route.totalDistanceMiles > 0 else { return 0 }
-        return Int(min(progressManager.totalMiles, route.totalDistanceMiles)
+        guard let route = routeManager.activeRoute,
+              route.totalDistanceMiles > 0 else { return 0 }
+        let progress = routeManager.progressMiles(totalMiles: progressManager.totalMiles)
+        return Int(min(progress, route.totalDistanceMiles)
                    / route.totalDistanceMiles * 100)
     }
 
@@ -127,4 +128,5 @@ struct ProfileScreen: View {
     ProfileScreen()
         .environment(StravaAuthService())
         .environment(RunProgressManager())
+        .environment(RouteManager())
 }

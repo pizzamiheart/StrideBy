@@ -8,52 +8,112 @@
 import SwiftUI
 
 struct RoutesScreen: View {
-    private let comingSoonRoutes = [
-        ("New York → Los Angeles", "2,790 mi", "flag.fill"),
-        ("London → Istanbul", "1,770 mi", "globe.europe.africa.fill"),
-        ("Tokyo → Kyoto", "300 mi", "globe.asia.australia.fill"),
-        ("Reykjavik → Vik", "110 mi", "snowflake"),
-        ("Sydney → Melbourne", "545 mi", "globe.americas.fill"),
-    ]
+    @Environment(RouteManager.self) private var routeManager
+    @Environment(RunProgressManager.self) private var progressManager
+
+    @State private var routeToConfirm: RunRoute?
 
     var body: some View {
         NavigationStack {
             List {
                 Section {
-                    ForEach(comingSoonRoutes, id: \.0) { route in
-                        HStack(spacing: 14) {
-                            Image(systemName: route.2)
-                                .font(.title3)
-                                .foregroundStyle(StrideByTheme.accent)
-                                .frame(width: 32)
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(route.0)
-                                    .font(.subheadline)
-                                    .fontWeight(.medium)
-
-                                Text(route.1)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                    ForEach(RunRoute.allRoutes) { route in
+                        RouteRow(
+                            route: route,
+                            isActive: route.id == routeManager.activeRouteKey,
+                            isCompleted: routeManager.isCompleted(routeKey: route.id)
+                        )
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            // Don't re-select the already active route
+                            if route.id != routeManager.activeRouteKey {
+                                routeToConfirm = route
                             }
-
-                            Spacer()
-
-                            Image(systemName: "lock.fill")
-                                .font(.caption)
-                                .foregroundStyle(.quaternary)
                         }
-                        .padding(.vertical, 4)
                     }
                 } header: {
                     Text("Available Routes")
                 }
             }
             .navigationTitle("Explore")
+            .confirmationDialog(
+                "Start \(routeToConfirm?.name ?? "route")?",
+                isPresented: Binding(
+                    get: { routeToConfirm != nil },
+                    set: { if !$0 { routeToConfirm = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                if let route = routeToConfirm {
+                    Button("Start \(route.origin) → \(route.destination)") {
+                        routeManager.startRoute(route, currentTotalMiles: progressManager.totalMiles)
+                        routeToConfirm = nil
+                    }
+                    Button("Cancel", role: .cancel) {
+                        routeToConfirm = nil
+                    }
+                }
+            } message: {
+                if let route = routeToConfirm {
+                    Text("You'll run \(Int(route.totalDistanceMiles)) miles on this route. Only new runs will count toward your progress.")
+                }
+            }
         }
+    }
+}
+
+// MARK: - Route Row
+
+private struct RouteRow: View {
+    let route: RunRoute
+    let isActive: Bool
+    let isCompleted: Bool
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: route.icon)
+                .font(.title3)
+                .foregroundStyle(isActive ? StrideByTheme.accent : .secondary)
+                .frame(width: 32)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(route.origin) → \(route.destination)")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+
+                HStack(spacing: 8) {
+                    Text("\(Int(route.totalDistanceMiles)) mi")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    if isActive {
+                        Text("Active")
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(StrideByTheme.accent)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(StrideByTheme.accent.opacity(0.12), in: Capsule())
+                    }
+                }
+            }
+
+            Spacer()
+
+            if isCompleted {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(StrideByTheme.accent)
+            } else if isActive {
+                Image(systemName: "figure.run")
+                    .foregroundStyle(StrideByTheme.accent)
+            }
+        }
+        .padding(.vertical, 4)
     }
 }
 
 #Preview {
     RoutesScreen()
+        .environment(RouteManager())
+        .environment(RunProgressManager())
 }
