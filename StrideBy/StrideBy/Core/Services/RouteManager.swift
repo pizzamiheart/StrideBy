@@ -96,6 +96,17 @@ final class RouteManager {
         completedRouteKeys.contains(routeKey)
     }
 
+    // MARK: - Debug
+
+    #if DEBUG
+    /// Resets progress on the active route so you can re-test it from 0 miles.
+    /// Clears completed checkmarks but does NOT touch lifetime miles or run count.
+    func resetDebugRouteProgress(currentTotalMiles: Double) {
+        completedRouteKeys = []
+        startingMiles = currentTotalMiles
+    }
+    #endif
+
     // MARK: - Keys
 
     private enum Keys {

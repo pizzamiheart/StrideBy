@@ -25,6 +25,9 @@ struct MapScreen: View {
 
     @State private var cameraPosition: MapCameraPosition = .automatic
     @State private var lookAroundTarget: LookAroundTarget?
+    #if DEBUG
+    @State private var showingRouteGenerator = false
+    #endif
 
     private var route: RunRoute? {
         routeManager.activeRoute
@@ -146,19 +149,6 @@ struct MapScreen: View {
                                     searchQueries: queries
                                 )
                             }
-                        },
-                        onLookAroundNearestPOI: {
-                            let nearbyPOIs = route.nearestPOIs(atMiles: completedMiles, limit: 14)
-                            if let poi = nearbyPOIs.first {
-                                let queries = ["\(poi.name), \(poi.state)"]
-                                    + nearbyPOIs.map { "\($0.name), \($0.state)" }
-                                lookAroundTarget = LookAroundTarget(
-                                    name: "\(poi.name), \(poi.state)",
-                                    coordinate: poi.coordinate,
-                                    seedCoordinates: nearbyPOIs.map(\.coordinate),
-                                    searchQueries: queries
-                                )
-                            }
                         }
                     )
                 }
@@ -168,7 +158,7 @@ struct MapScreen: View {
         }
         .overlay(alignment: .topTrailing) {
             #if DEBUG
-            DebugMilesOverlay(progressManager: progressManager)
+            DebugMilesOverlay(progressManager: progressManager, routeManager: routeManager, showingRouteGenerator: $showingRouteGenerator)
             #endif
         }
         .task {
@@ -221,6 +211,11 @@ struct MapScreen: View {
                 searchQueries: target.searchQueries
             )
         }
+        #if DEBUG
+        .sheet(isPresented: $showingRouteGenerator) {
+            RouteGeneratorSheet()
+        }
+        #endif
     }
 
     private func activeCoordinates(for route: RunRoute) -> [CLLocationCoordinate2D] {
@@ -288,6 +283,8 @@ private struct RouteDotView: View {
 #if DEBUG
 private struct DebugMilesOverlay: View {
     let progressManager: RunProgressManager
+    let routeManager: RouteManager
+    @Binding var showingRouteGenerator: Bool
 
     var body: some View {
         VStack(spacing: 6) {
@@ -304,8 +301,16 @@ private struct DebugMilesOverlay: View {
                 progressManager.addDebugMiles(200)
             }
 
-            Button("Reset") {
-                progressManager.resetDebugProgress()
+            Button("Reset Route") {
+                routeManager.resetDebugRouteProgress(currentTotalMiles: progressManager.totalMiles)
+            }
+
+            Divider()
+                .frame(width: 40)
+                .background(.white.opacity(0.3))
+
+            Button("Gen Routes") {
+                showingRouteGenerator = true
             }
         }
         .font(.caption)

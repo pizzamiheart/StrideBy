@@ -43,7 +43,7 @@ struct LookAroundSheet: View {
                             hideInteractionHint()
                         }
                         .simultaneousGesture(
-                            DragGesture(minDistance: 1)
+                            DragGesture(minimumDistance: 1)
                                 .onChanged { _ in
                                     hideInteractionHint()
                                 }
