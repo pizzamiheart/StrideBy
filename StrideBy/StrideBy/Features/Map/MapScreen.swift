@@ -128,8 +128,7 @@ struct MapScreen: View {
                         isComplete: isRouteComplete,
                         onLookAroundHere: {
                             if let coord = currentCoordinate {
-                                let nearbyPOIs = route.nearestPOIs(atMiles: completedMiles, limit: 10)
-                                let candidateMiles = [-8.0, -4.0, -2.0, 0, 2.0, 4.0, 8.0]
+                                let candidateMiles = [-4.0, -2.0, 0, 2.0, 4.0]
                                     .map { completedMiles + $0 }
                                 let activePath = activeCoordinates(for: route)
                                 let routeCandidates = candidateMiles.map {
@@ -137,16 +136,12 @@ struct MapScreen: View {
                                 }
 
                                 let primaryName = route.nearestLocationName(atMiles: completedMiles)
-                                let seeds = [coord]
-                                    + routeCandidates
-                                    + nearbyPOIs.map(\.coordinate)
-                                let queries = [primaryName] + nearbyPOIs.map { "\($0.name), \($0.state)" }
 
                                 lookAroundTarget = LookAroundTarget(
                                     name: primaryName,
                                     coordinate: coord,
-                                    seedCoordinates: seeds,
-                                    searchQueries: queries
+                                    seedCoordinates: [coord] + routeCandidates,
+                                    searchQueries: []
                                 )
                             }
                         }

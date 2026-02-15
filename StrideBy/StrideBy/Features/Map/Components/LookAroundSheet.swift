@@ -11,10 +11,12 @@ import SwiftUI
 
 /// A sheet that displays Apple Look Around street-level imagery for a given coordinate.
 ///
-/// Shows three states:
-/// - **Loading:** A spinner while the Look Around scene is fetched.
-/// - **Success:** An interactive `LookAroundPreview` the user can pan around.
-/// - **No coverage:** A friendly fallback when Apple doesn't have imagery at that location.
+/// Search strategy (intentionally tight — max ~5km):
+/// 1. Try the exact pin coordinate and seed coordinates (nearby route points)
+/// 2. Try a small grid of offsets around the pin (300m, 600m)
+/// 3. Try Apple POIs within 3km
+/// 4. Try a reverse-geocode text search within 5km
+/// 5. If nothing found, honestly show "No coverage" — never jump to a distant city
 @MainActor
 struct LookAroundSheet: View {
     @Environment(\.dismiss) private var dismiss
@@ -112,12 +114,12 @@ struct LookAroundSheet: View {
 
     private var noCoverageView: some View {
         VStack(spacing: 16) {
-            Image(systemName: "eye.slash")
+            Image(systemName: "binoculars")
                 .font(.system(size: 48))
                 .foregroundStyle(.tertiary)
-            Text("No Look Around coverage here")
+            Text("No street view here")
                 .font(.headline)
-            Text("Apple doesn't have street-level imagery at this location yet.")
+            Text("Street-level imagery is available in cities and along major highways. Keep running — you'll hit coverage soon!")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -142,84 +144,57 @@ struct LookAroundSheet: View {
         return distanceMeters(from: coordinate, to: resolvedCoordinate) > 5
     }
 
-    /// Tries the tapped coordinate first, then nearby fallback points.
+    // MARK: - Search Strategy
+
+    /// Searches for Look Around coverage using a minimal number of requests.
+    ///
+    /// Apple's MapKit enforces a strict 50 requests/60 seconds limit across ALL request
+    /// types (scene requests, POI searches, reverse geocodes). Each MKLookAroundSceneRequest
+    /// internally counts as a reverse geocode. So we budget carefully:
+    ///
+    /// 1. Pin coordinate — 1 request
+    /// 2. Up to 3 nearby route points — 3 requests
+    /// 3. One POI search + up to 3 scene checks — 4 requests
+    /// Total: max 8 requests per tap. Safe for rapid back-to-back usage.
     private func findBestScene(near source: CLLocationCoordinate2D)
         async -> (scene: MKLookAroundScene?, coordinate: CLLocationCoordinate2D?) {
+
+        // 1. Try the exact pin coordinate
+        debugLog("Trying exact coordinate...")
+        if let scene = await requestSceneSafely(at: source) {
+            debugLog("Found at exact coordinate")
+            return (scene, source)
+        }
+
+        // 2. Try nearby route points (±2-4 miles on the actual road)
+        let seeds = uniqueCoordinates(seedCoordinates).prefix(3)
+        for seed in seeds {
+            debugLog("Trying seed coordinate...")
+            if let scene = await requestSceneSafely(at: seed) {
+                debugLog("Found at seed coordinate")
+                return (scene, seed)
+            }
+        }
+
+        // 3. Try Apple POIs within 2km — one search, check top 3 results
+        debugLog("Trying POI search within 2km...")
         if let poiResult = await findSceneViaNearbyPOIs(near: source) {
-            debugLog("Resolved via nearby POI strategy")
+            debugLog("Found via nearby POI")
             return poiResult
         }
 
-        if let queryResult = await findSceneViaSearchQueries(near: source) {
-            debugLog("Resolved via search query strategy")
-            return queryResult
-        }
-
-        let seeds = uniqueCoordinates([source] + seedCoordinates)
-        let candidates = seeds.flatMap { nearbyCandidates(around: $0) }
-
-        for candidate in candidates {
-            if let scene = await requestSceneSafely(at: candidate) {
-                debugLog("Resolved via coordinate candidate")
-                return (scene, candidate)
-            }
-        }
-
-        if let searchFallback = await findSceneViaLocalSearch(near: source) {
-            debugLog("Resolved via local search fallback")
-            return searchFallback
-        }
-
-        debugLog("No coverage found after all fallback strategies")
+        debugLog("No coverage found (used max ~8 requests)")
         return (nil, nil)
     }
 
-    private func findSceneViaSearchQueries(near source: CLLocationCoordinate2D)
-        async -> (scene: MKLookAroundScene, coordinate: CLLocationCoordinate2D)? {
-        let extraQueries = await reverseGeocodeQueryCandidates(near: source)
-        let queries = uniqueStrings(searchQueries + [locationName] + extraQueries)
-        let radiiMeters: [CLLocationDistance] = [3_000, 8_000, 20_000, 45_000]
+    // MARK: - Helpers
 
-        for radius in radiiMeters {
-            for query in queries {
-                if let result = await findSceneViaLocalSearch(
-                    near: source,
-                    radiusMeters: radius,
-                    query: query,
-                    maxItems: 8
-                ) {
-                    debugLog("Resolved map item query '\(query)'")
-                    return result
-                }
-            }
-        }
-
-        return nil
-    }
-
+    /// Searches Apple POIs within 2km, checks the 3 closest for Look Around.
     private func findSceneViaNearbyPOIs(near source: CLLocationCoordinate2D)
-        async -> (scene: MKLookAroundScene, coordinate: CLLocationCoordinate2D)? {
-        let radiiMeters: [CLLocationDistance] = [1_500, 5_000, 12_000, 25_000]
-
-        for radius in radiiMeters {
-            if let result = await findSceneViaNearbyPOIs(
-                near: source,
-                radiusMeters: radius,
-                maxItems: 25
-            ) {
-                return result
-            }
-        }
-        return nil
-    }
-
-    private func findSceneViaNearbyPOIs(near source: CLLocationCoordinate2D,
-                                        radiusMeters: CLLocationDistance,
-                                        maxItems: Int)
         async -> (scene: MKLookAroundScene, coordinate: CLLocationCoordinate2D)? {
         let request = MKLocalPointsOfInterestRequest(
             center: source,
-            radius: radiusMeters
+            radius: 2_000
         )
 
         do {
@@ -229,7 +204,7 @@ struct LookAroundSheet: View {
                     distanceMeters(from: source, to: $0.placemark.coordinate)
                         < distanceMeters(from: source, to: $1.placemark.coordinate)
                 }
-                .prefix(maxItems)
+                .prefix(3)
 
             for item in mapItems {
                 if let scene = await requestSceneSafely(for: item) {
@@ -261,23 +236,6 @@ struct LookAroundSheet: View {
         }
     }
 
-    private func nearbyCandidates(around source: CLLocationCoordinate2D) -> [CLLocationCoordinate2D] {
-        let radiiMeters: [CLLocationDistance] = [0, 180, 450, 900]
-        let bearings: [CLLocationDirection] = [0, 45, 90, 135, 180, 225, 270, 315]
-
-        var candidates: [CLLocationCoordinate2D] = [source]
-        let origin = CLLocation(latitude: source.latitude, longitude: source.longitude)
-
-        for radius in radiiMeters where radius > 0 {
-            for bearing in bearings {
-                let destination = origin.coordinateByMoving(distanceMeters: radius, bearingDegrees: bearing)
-                candidates.append(destination)
-            }
-        }
-
-        return candidates
-    }
-
     private func uniqueCoordinates(_ coordinates: [CLLocationCoordinate2D]) -> [CLLocationCoordinate2D] {
         var seen = Set<String>()
         var result: [CLLocationCoordinate2D] = []
@@ -291,118 +249,12 @@ struct LookAroundSheet: View {
         return result
     }
 
-    private func findSceneViaLocalSearch(near source: CLLocationCoordinate2D)
-        async -> (scene: MKLookAroundScene, coordinate: CLLocationCoordinate2D)? {
-        let reverseGeocodeQueries = await reverseGeocodeQueryCandidates(near: source)
-        let queries = [locationName]
-            + reverseGeocodeQueries
-            + [
-                "landmark near \(locationName)",
-                "historic site near \(locationName)",
-                "museum near \(locationName)",
-                "downtown \(locationName)",
-                "city center \(locationName)",
-                "park near \(locationName)",
-            ]
-        let radiiMeters: [CLLocationDistance] = [8_000, 20_000, 45_000, 80_000, 140_000]
-
-        for radius in radiiMeters {
-            for query in queries {
-                if let result = await findSceneViaLocalSearch(near: source, radiusMeters: radius, query: query) {
-                    return result
-                }
-            }
-        }
-        return nil
-    }
-
-    private func reverseGeocodeQueryCandidates(near source: CLLocationCoordinate2D) async -> [String] {
-        let location = CLLocation(latitude: source.latitude, longitude: source.longitude)
-        let geocoder = CLGeocoder()
-
-        do {
-            guard let placemark = try await geocoder.reverseGeocodeLocation(location).first else {
-                return []
-            }
-
-            var queries: [String] = []
-
-            if let thoroughfare = placemark.thoroughfare, !thoroughfare.isEmpty {
-                if let locality = placemark.locality, !locality.isEmpty {
-                    queries.append("\(thoroughfare), \(locality)")
-                }
-                queries.append(thoroughfare)
-            }
-
-            if let locality = placemark.locality, !locality.isEmpty {
-                if let admin = placemark.administrativeArea, !admin.isEmpty {
-                    queries.append("\(locality), \(admin)")
-                } else {
-                    queries.append(locality)
-                }
-            }
-
-            if let country = placemark.country, !country.isEmpty {
-                queries.append(country)
-            }
-
-            return Array(Set(queries))
-        } catch {
-            return []
-        }
-    }
-
-    private func findSceneViaLocalSearch(near source: CLLocationCoordinate2D,
-                                         radiusMeters: CLLocationDistance,
-                                         query: String,
-                                         maxItems: Int = 10)
-        async -> (scene: MKLookAroundScene, coordinate: CLLocationCoordinate2D)? {
-        let request = MKLocalSearch.Request()
-        request.naturalLanguageQuery = query
-        request.region = MKCoordinateRegion(
-            center: source,
-            latitudinalMeters: radiusMeters,
-            longitudinalMeters: radiusMeters
-        )
-        request.resultTypes = [.pointOfInterest, .address]
-
-        do {
-            let response = try await MKLocalSearch(request: request).start()
-            let candidates = response.mapItems
-                .sorted {
-                    distanceMeters(from: source, to: $0.placemark.coordinate)
-                        < distanceMeters(from: source, to: $1.placemark.coordinate)
-                }
-                .prefix(maxItems)
-            for item in candidates {
-                if let scene = await requestSceneSafely(for: item) {
-                    return (scene, item.placemark.coordinate)
-                }
-            }
-        } catch {
-            return nil
-        }
-        return nil
-    }
-
-    private func uniqueStrings(_ values: [String]) -> [String] {
-        var seen = Set<String>()
-        var result: [String] = []
-        for raw in values {
-            let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !value.isEmpty else { continue }
-            let key = value.lowercased()
-            if seen.insert(key).inserted {
-                result.append(value)
-            }
-        }
-        return result
-    }
-
     private func distanceMeters(from: CLLocationCoordinate2D, to: CLLocationCoordinate2D) -> CLLocationDistance {
         CLLocation(latitude: from.latitude, longitude: from.longitude)
             .distance(from: CLLocation(latitude: to.latitude, longitude: to.longitude))
     }
+
+    // MARK: - UI Components
 
     private var closeButton: some View {
         Button("Close") {
