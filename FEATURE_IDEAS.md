@@ -34,3 +34,10 @@ When you share a postcard or milestone card, include a deep link. Recipient taps
 
 ### Strava Integration Social Layer
 Surface mutual Strava followers who also use StrideBy. "3 of your Strava friends are on StrideBy" during onboarding. Auto-suggest shared routes with people you already run with.
+
+---
+
+## Portal Effect When User Clicks "Look Around"
+
+### Look Around feels like a time travel 
+So when you click it the the screen feels like you're jumping through a time portal and it's fascinating and fun rather than the swipe up menu that comes up now. It should feel magical to travel to that point where you've progressed to on the map.

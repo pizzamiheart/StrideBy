@@ -15,6 +15,9 @@ private struct LookAroundTarget: Identifiable {
     let coordinate: CLLocationCoordinate2D
     let seedCoordinates: [CLLocationCoordinate2D]
     let searchQueries: [String]
+    let completedMiles: Double
+    let routeName: String
+    let route: RunRoute?
 }
 
 struct MapScreen: View {
@@ -27,6 +30,7 @@ struct MapScreen: View {
     @State private var lookAroundTarget: LookAroundTarget?
     #if DEBUG
     @State private var showingRouteGenerator = false
+    @State private var showingCoverageAudit = false
     #endif
 
     private var route: RunRoute? {
@@ -128,9 +132,17 @@ struct MapScreen: View {
                         isComplete: isRouteComplete,
                         onLookAroundHere: {
                             if let coord = currentCoordinate {
+                                let activePath = activeCoordinates(for: route)
+
+                                // Use the nearest curated POI's town center as the
+                                // primary search coordinate — Look Around coverage
+                                // clusters in town centers, not on highway overpasses.
+                                let nearestPOI = route.nearestPOI(atMiles: completedMiles)
+                                let primaryCoord = nearestPOI?.coordinate ?? coord
+
+                                // Keep the actual highway pin + nearby road points as seeds
                                 let candidateMiles = [-4.0, -2.0, 0, 2.0, 4.0]
                                     .map { completedMiles + $0 }
-                                let activePath = activeCoordinates(for: route)
                                 let routeCandidates = candidateMiles.map {
                                     route.coordinateAt(miles: $0, using: activePath)
                                 }
@@ -139,9 +151,12 @@ struct MapScreen: View {
 
                                 lookAroundTarget = LookAroundTarget(
                                     name: primaryName,
-                                    coordinate: coord,
+                                    coordinate: primaryCoord,
                                     seedCoordinates: [coord] + routeCandidates,
-                                    searchQueries: []
+                                    searchQueries: [],
+                                    completedMiles: completedMiles,
+                                    routeName: route.name,
+                                    route: route
                                 )
                             }
                         }
@@ -153,7 +168,7 @@ struct MapScreen: View {
         }
         .overlay(alignment: .topTrailing) {
             #if DEBUG
-            DebugMilesOverlay(progressManager: progressManager, routeManager: routeManager, showingRouteGenerator: $showingRouteGenerator)
+            DebugMilesOverlay(progressManager: progressManager, routeManager: routeManager, showingRouteGenerator: $showingRouteGenerator, showingCoverageAudit: $showingCoverageAudit)
             #endif
         }
         .task {
@@ -203,12 +218,18 @@ struct MapScreen: View {
                 locationName: target.name,
                 coordinate: target.coordinate,
                 seedCoordinates: target.seedCoordinates,
-                searchQueries: target.searchQueries
+                searchQueries: target.searchQueries,
+                completedMiles: target.completedMiles,
+                routeName: target.routeName,
+                route: target.route
             )
         }
         #if DEBUG
         .sheet(isPresented: $showingRouteGenerator) {
             RouteGeneratorSheet()
+        }
+        .sheet(isPresented: $showingCoverageAudit) {
+            CoverageAuditSheet()
         }
         #endif
     }
@@ -280,6 +301,7 @@ private struct DebugMilesOverlay: View {
     let progressManager: RunProgressManager
     let routeManager: RouteManager
     @Binding var showingRouteGenerator: Bool
+    @Binding var showingCoverageAudit: Bool
 
     var body: some View {
         VStack(spacing: 6) {
@@ -306,6 +328,10 @@ private struct DebugMilesOverlay: View {
 
             Button("Gen Routes") {
                 showingRouteGenerator = true
+            }
+
+            Button("Coverage") {
+                showingCoverageAudit = true
             }
         }
         .font(.caption)

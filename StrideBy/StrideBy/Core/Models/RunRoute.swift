@@ -282,6 +282,15 @@ extension RunRoute {
             Landmark(id: "nyc-reno", name: "Reno", state: "NV",
                      coordinate: CLLocationCoordinate2D(latitude: 39.5296, longitude: -119.8138),
                      distanceFromStartMiles: 2370),
+            Landmark(id: "nyc-sacramento", name: "Sacramento", state: "CA",
+                     coordinate: CLLocationCoordinate2D(latitude: 38.5816, longitude: -121.4944),
+                     distanceFromStartMiles: 2430),
+            Landmark(id: "nyc-fresno", name: "Fresno", state: "CA",
+                     coordinate: CLLocationCoordinate2D(latitude: 36.7783, longitude: -119.7871),
+                     distanceFromStartMiles: 2580),
+            Landmark(id: "nyc-bakersfield", name: "Bakersfield", state: "CA",
+                     coordinate: CLLocationCoordinate2D(latitude: 35.3733, longitude: -119.0187),
+                     distanceFromStartMiles: 2670),
             Landmark(id: "nyc-losangeles", name: "Los Angeles", state: "CA",
                      coordinate: CLLocationCoordinate2D(latitude: 34.0522, longitude: -118.2437),
                      distanceFromStartMiles: 2790),
@@ -492,11 +501,18 @@ extension RunRoute {
 
 extension RunRoute {
 
-    /// Returns the name of the nearest landmark to the given mileage.
+    /// Returns the name of the nearest town/city to the given mileage.
+    ///
+    /// Uses `pointsOfInterest` (spaced every ~30-50mi) for accurate labels.
+    /// Falls back to `landmarks` if POIs aren't available.
     func nearestLocationName(atMiles miles: Double) -> String {
         if miles < 10 { return origin }
 
-        guard let nearest = landmarks.min(by: {
+        // Prefer POIs — they're spaced every 30-50mi so labels are accurate
+        // within ~25mi. Landmarks are only every 200-400mi.
+        let source = pointsOfInterest.isEmpty ? landmarks : pointsOfInterest
+
+        guard let nearest = source.min(by: {
             abs($0.distanceFromStartMiles - miles) < abs($1.distanceFromStartMiles - miles)
         }) else {
             return origin
