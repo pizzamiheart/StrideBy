@@ -41,3 +41,51 @@ Surface mutual Strava followers who also use StrideBy. "3 of your Strava friends
 
 ### Look Around feels like a time travel 
 So when you click it the the screen feels like you're jumping through a time portal and it's fascinating and fun rather than the swipe up menu that comes up now. It should feel magical to travel to that point where you've progressed to on the map.
+
+---
+
+## Banked Build Plan: UGC + Viral Sharing
+
+### Product Goal
+Create a lightweight, repeatable sharing loop where each run produces a delightful "travel moment" users want to post to Strava and social.
+
+### Share Objects (MVP-first)
+- Route Postcard: destination image + city + "I moved X miles on [route]".
+- Landmark Unlock Card: triggered at major POIs.
+- Route Completion Card: full celebratory share.
+
+### Caption System
+- 1-tap caption presets with fun tone:
+  - "Ran in my neighborhood, landed in Tokyo."
+  - "Cardio passport stamped."
+  - "Leg day, jet lag."
+- Optional user editable text before export.
+
+### Distribution Channels
+- Native iOS share sheet first (supports Strava/IG/X/messages with zero API risk).
+- Export sizes:
+  - Story 9:16
+  - Feed square 1:1
+  - Wide 16:9
+
+### Viral Loop
+- Include deep link in shared payload:
+  - Open app (or install) -> jump to same route -> prompt "Run this route".
+- Referral attribution:
+  - `shared_by_user_id`
+  - `route_id`
+  - `template_id`
+  - `opened_at`, `installed_at`, `started_route_at`
+
+### Suggested Implementation Phases
+1. Card renderer + templates + share sheet.
+2. Auto-prompt on milestones (not every run).
+3. Deep-link landing + start-same-route flow.
+4. Analytics dashboard for share/open/install/start-route funnel.
+5. Later: direct Strava activity enrichment via API (policy/rate-limit review required).
+
+### Data/Infra Prereqs (for later)
+- User auth + profiles.
+- Event table for share funnel telemetry.
+- Signed URL/image hosting for durable cards.
+- Background job support for async card rendering if needed.

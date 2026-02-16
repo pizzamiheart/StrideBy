@@ -13,6 +13,7 @@ struct RouteProgressCard: View {
     var isSyncing: Bool = false
     var isComplete: Bool = false
     var onLookAroundHere: (() -> Void)?
+    var onLookAroundNearestPOI: (() -> Void)?
 
     private var percentComplete: Double {
         guard route.totalDistanceMiles > 0 else { return 0 }
@@ -109,18 +110,37 @@ struct RouteProgressCard: View {
                 }
             }
 
-            // Look Around button — shown when in progress and not complete
-            if progress.completedMiles > 0 && !isComplete, onLookAroundHere != nil {
-                Button {
-                    onLookAroundHere?()
-                } label: {
-                    Label("Look Around", systemImage: "binoculars.fill")
-                        .font(.caption)
-                        .fontWeight(.medium)
+            // Look Around buttons — shown when in progress and not complete
+            if progress.completedMiles > 0 && !isComplete {
+                HStack(spacing: 10) {
+                    if onLookAroundHere != nil {
+                        Button {
+                            onLookAroundHere?()
+                        } label: {
+                            Label("Look Around", systemImage: "binoculars.fill")
+                                .font(.caption)
+                                .fontWeight(.medium)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(StrideByTheme.accent)
+                        .controlSize(.small)
+                    }
+
+                    if onLookAroundNearestPOI != nil {
+                        Button {
+                            onLookAroundNearestPOI?()
+                        } label: {
+                            Label("Nearest Place", systemImage: "building.2.fill")
+                                .font(.caption)
+                                .fontWeight(.medium)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(StrideByTheme.accent)
+                        .controlSize(.small)
+                    }
+
+                    Spacer()
                 }
-                .buttonStyle(.bordered)
-                .tint(StrideByTheme.accent)
-                .controlSize(.small)
             }
 
             // Completion celebration or upcoming landmarks
@@ -168,17 +188,18 @@ struct RouteProgressCard: View {
 
 #Preview("In Progress") {
     RouteProgressCard(
-        route: .nycToLA,
-        progress: UserProgress(completedMiles: 847, nearestLocationName: "Terre Haute, IN"),
-        onLookAroundHere: {}
+        route: .parisCityLoop,
+        progress: UserProgress(completedMiles: 12, nearestLocationName: "Louvre, Paris"),
+        onLookAroundHere: {},
+        onLookAroundNearestPOI: {}
     )
     .padding()
 }
 
 #Preview("Complete") {
     RouteProgressCard(
-        route: .nycToLA,
-        progress: UserProgress(completedMiles: 2790, nearestLocationName: "Los Angeles, CA"),
+        route: .parisCityLoop,
+        progress: UserProgress(completedMiles: 28, nearestLocationName: "Bastille, Paris"),
         isComplete: true
     )
     .padding()

@@ -469,26 +469,26 @@ private extension CLLocation {
     }
 }
 
-#Preview("Look Around — NYC") {
+#Preview("Look Around — Paris") {
     LookAroundSheet(
-        locationName: "Times Square, NY",
-        coordinate: CLLocationCoordinate2D(latitude: 40.7580, longitude: -73.9855),
+        locationName: "Louvre, Paris",
+        coordinate: CLLocationCoordinate2D(latitude: 48.8606, longitude: 2.3376),
         seedCoordinates: [],
         searchQueries: [],
         completedMiles: 0,
-        routeName: "Coast to Coast",
-        route: .nycToLA
+        routeName: "Paris Arrondissement Tour",
+        route: .parisCityLoop
     )
 }
 
 #Preview("Look Around — No Coverage") {
     LookAroundSheet(
-        locationName: "Hellertown, PA",
-        coordinate: CLLocationCoordinate2D(latitude: 40.6627, longitude: -75.1418),
+        locationName: "Near Luxembourg Gardens",
+        coordinate: CLLocationCoordinate2D(latitude: 48.8462, longitude: 2.3371),
         seedCoordinates: [],
         searchQueries: [],
-        completedMiles: 50,
-        routeName: "Coast to Coast",
-        route: .nycToLA
+        completedMiles: 12,
+        routeName: "Paris Arrondissement Tour",
+        route: .parisCityLoop
     )
 }

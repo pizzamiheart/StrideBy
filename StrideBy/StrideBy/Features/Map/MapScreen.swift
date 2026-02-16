@@ -7,6 +7,10 @@
 
 import MapKit
 import SwiftUI
+#if canImport(Lottie)
+import Lottie
+import UIKit
+#endif
 
 /// An identifiable target for the Look Around sheet.
 private struct LookAroundTarget: Identifiable {
@@ -28,6 +32,8 @@ struct MapScreen: View {
 
     @State private var cameraPosition: MapCameraPosition = .automatic
     @State private var lookAroundTarget: LookAroundTarget?
+    @State private var showPortalEffect = false
+    @State private var portalPulse = false
     #if DEBUG
     @State private var showingRouteGenerator = false
     @State private var showingCoverageAudit = false
@@ -149,7 +155,7 @@ struct MapScreen: View {
 
                                 let primaryName = route.nearestLocationName(atMiles: completedMiles)
 
-                                lookAroundTarget = LookAroundTarget(
+                                let target = LookAroundTarget(
                                     name: primaryName,
                                     coordinate: primaryCoord,
                                     seedCoordinates: [coord] + routeCandidates,
@@ -158,6 +164,7 @@ struct MapScreen: View {
                                     routeName: route.name,
                                     route: route
                                 )
+                                launchLookAroundPortal(to: target)
                             }
                         }
                     )
@@ -170,6 +177,13 @@ struct MapScreen: View {
             #if DEBUG
             DebugMilesOverlay(progressManager: progressManager, routeManager: routeManager, showingRouteGenerator: $showingRouteGenerator, showingCoverageAudit: $showingCoverageAudit)
             #endif
+        }
+        .overlay {
+            if showPortalEffect {
+                LookAroundPortalEffectView(isPulsing: portalPulse)
+                    .transition(.opacity)
+                    .allowsHitTesting(false)
+            }
         }
         .task {
             // Set initial camera to the active route's bounding region
@@ -264,6 +278,31 @@ struct MapScreen: View {
             )
         )
     }
+
+    private func launchLookAroundPortal(to target: LookAroundTarget) {
+        guard lookAroundTarget == nil else { return }
+
+        portalPulse = false
+        withAnimation(.easeIn(duration: 0.12)) {
+            showPortalEffect = true
+        }
+
+        Task {
+            // Brief blackout beat before the warp opens
+            try? await Task.sleep(for: .milliseconds(130))
+            withAnimation(.easeOut(duration: 0.38)) {
+                portalPulse = true
+            }
+
+            try? await Task.sleep(for: .milliseconds(340))
+            lookAroundTarget = target
+
+            withAnimation(.easeOut(duration: 0.20)) {
+                showPortalEffect = false
+            }
+            portalPulse = false
+        }
+    }
 }
 
 // MARK: - Route Endpoint Dots
@@ -310,12 +349,25 @@ private struct DebugMilesOverlay: View {
                 .fontWeight(.bold)
                 .foregroundStyle(.white.opacity(0.7))
 
-            Button("+50 mi") {
-                progressManager.addDebugMiles(50)
+            HStack(spacing: 4) {
+                Button("+1") {
+                    progressManager.addDebugMiles(1)
+                }
+                Button("+5") {
+                    progressManager.addDebugMiles(5)
+                }
+                Button("+20") {
+                    progressManager.addDebugMiles(20)
+                }
             }
 
-            Button("+200 mi") {
-                progressManager.addDebugMiles(200)
+            HStack(spacing: 4) {
+                Button("+50") {
+                    progressManager.addDebugMiles(50)
+                }
+                Button("+200") {
+                    progressManager.addDebugMiles(200)
+                }
             }
 
             Button("Reset Route") {
@@ -341,6 +393,154 @@ private struct DebugMilesOverlay: View {
         .controlSize(.mini)
         .padding(.top, 60)
         .padding(.trailing, 12)
+    }
+}
+#endif
+
+private struct LookAroundPortalEffectView: View {
+    let isPulsing: Bool
+
+    var body: some View {
+        ZStack {
+            // Dark "void" moment before entering the portal.
+            Color.black.opacity(isPulsing ? 0.38 : 0.92)
+                .ignoresSafeArea()
+
+            PortalTunnelRingsView(isPulsing: isPulsing)
+
+            #if canImport(Lottie)
+            LottiePortalWarpLayer(isPulsing: isPulsing)
+            #else
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            StrideByTheme.accent.opacity(0.9),
+                            .blue.opacity(0.75),
+                            .clear
+                        ],
+                        center: .center,
+                        startRadius: 10,
+                        endRadius: 220
+                    )
+                )
+                .frame(width: isPulsing ? 520 : 120, height: isPulsing ? 520 : 120)
+                .blur(radius: isPulsing ? 0 : 6)
+            #endif
+
+            VStack(spacing: 10) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 34, weight: .semibold))
+                    .foregroundStyle(.white)
+                Text("Entering Look Around")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+            }
+            .opacity(isPulsing ? 1 : 0.65)
+            .scaleEffect(isPulsing ? 1.0 : 0.85)
+        }
+    }
+}
+
+private struct PortalTunnelRingsView: View {
+    let isPulsing: Bool
+
+    var body: some View {
+        ZStack {
+            ForEach(0..<5, id: \.self) { index in
+                Circle()
+                    .strokeBorder(.white.opacity(0.13 - (Double(index) * 0.02)), lineWidth: 2)
+                    .frame(
+                        width: (isPulsing ? 560 : 180) + (CGFloat(index) * 90),
+                        height: (isPulsing ? 560 : 180) + (CGFloat(index) * 90)
+                    )
+                    .blur(radius: isPulsing ? 0 : 2)
+            }
+        }
+        .animation(.easeOut(duration: 0.42), value: isPulsing)
+    }
+}
+
+#if canImport(Lottie)
+private struct LottiePortalWarpLayer: View {
+    let isPulsing: Bool
+    private let hasAnimation = LottieAnimation.named("portal_warp") != nil
+
+    var body: some View {
+        Group {
+            if hasAnimation {
+                LottiePortalAnimationView(animationName: "portal_warp", play: isPulsing)
+                    .opacity(isPulsing ? 1.0 : 0.4)
+                    .scaleEffect(isPulsing ? 1.45 : 0.85)
+                    .blendMode(.screen)
+            } else {
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                .white.opacity(0.35),
+                                .blue.opacity(0.45),
+                                .black.opacity(0.9),
+                                .clear,
+                            ],
+                            center: .center,
+                            startRadius: 12,
+                            endRadius: 260
+                        )
+                    )
+                    .frame(width: isPulsing ? 620 : 160, height: isPulsing ? 620 : 160)
+            }
+        }
+        .blur(radius: isPulsing ? 0 : 2)
+        .animation(.easeOut(duration: 0.42), value: isPulsing)
+    }
+}
+
+private struct LottiePortalAnimationView: UIViewRepresentable {
+    let animationName: String
+    let play: Bool
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeUIView(context: Context) -> UIView {
+        let container = UIView(frame: .zero)
+        container.backgroundColor = .clear
+
+        let animationView = LottieAnimationView()
+        animationView.translatesAutoresizingMaskIntoConstraints = false
+        animationView.contentMode = .scaleAspectFill
+        animationView.backgroundBehavior = .pauseAndRestore
+        animationView.loopMode = .playOnce
+        animationView.animation = LottieAnimation.named(animationName)
+
+        container.addSubview(animationView)
+        NSLayoutConstraint.activate([
+            animationView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            animationView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            animationView.topAnchor.constraint(equalTo: container.topAnchor),
+            animationView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+        ])
+
+        context.coordinator.animationView = animationView
+        return container
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        guard let animationView = context.coordinator.animationView else { return }
+
+        if play, context.coordinator.lastPlayState == false {
+            animationView.currentProgress = 0
+            animationView.play()
+        }
+
+        context.coordinator.lastPlayState = play
+    }
+
+    final class Coordinator {
+        var animationView: LottieAnimationView?
+        var lastPlayState = false
     }
 }
 #endif

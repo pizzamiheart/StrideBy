@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		A1105A492F3E84A500C7FD09 /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = A1105A482F3E84A500C7FD09 /* Lottie */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		24E589552F3E84A500C7FD09 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -65,6 +69,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1105A492F3E84A500C7FD09 /* Lottie in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -125,6 +130,7 @@
 			);
 			name = StrideBy;
 			packageProductDependencies = (
+				A1105A482F3E84A500C7FD09 /* Lottie */,
 			);
 			productName = StrideBy;
 			productReference = 24E589472F3E84A200C7FD09 /* StrideBy.app */;
@@ -208,6 +214,9 @@
 			);
 			mainGroup = 24E5893E2F3E84A200C7FD09;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				A1105A472F3E84A500C7FD09 /* XCRemoteSwiftPackageReference "lottie-spm" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 24E589482F3E84A200C7FD09 /* Products */;
 			projectDirPath = "";
@@ -593,6 +602,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A1105A472F3E84A500C7FD09 /* XCRemoteSwiftPackageReference "lottie-spm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/airbnb/lottie-spm.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 4.5.2;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A1105A482F3E84A500C7FD09 /* Lottie */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A1105A472F3E84A500C7FD09 /* XCRemoteSwiftPackageReference "lottie-spm" */;
+			productName = Lottie;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 24E5893F2F3E84A200C7FD09 /* Project object */;
 }

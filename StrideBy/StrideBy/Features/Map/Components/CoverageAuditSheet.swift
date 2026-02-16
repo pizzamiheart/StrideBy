@@ -18,7 +18,7 @@ struct CoverageAuditSheet: View {
     @Environment(RouteGeometryManager.self) private var geometryManager
 
     @State private var auditor = CoverageAuditTool()
-    @State private var selectedRoute: RunRoute = .nycToLA
+    @State private var selectedRoute: RunRoute = .parisCityLoop
     @State private var intervalMiles: Double = 50
 
     private let intervalOptions: [Double] = [25, 50, 100]
