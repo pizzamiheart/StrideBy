@@ -7,10 +7,6 @@
 
 import MapKit
 import SwiftUI
-#if canImport(Lottie)
-import Lottie
-import UIKit
-#endif
 
 /// An identifiable target for the Look Around sheet.
 private struct LookAroundTarget: Identifiable {
@@ -24,14 +20,26 @@ private struct LookAroundTarget: Identifiable {
     let route: RunRoute?
 }
 
+private struct PostRunCelebration: Identifiable {
+    let id = UUID()
+    let milesAdvanced: Double
+    let locationName: String
+}
+
 struct MapScreen: View {
     @Environment(StravaAuthService.self) private var stravaAuth
     @Environment(RunProgressManager.self) private var progressManager
     @Environment(RouteManager.self) private var routeManager
     @Environment(RouteGeometryManager.self) private var routeGeometryManager
+    @Environment(AnalyticsService.self) private var analytics
 
     @State private var cameraPosition: MapCameraPosition = .automatic
     @State private var lookAroundTarget: LookAroundTarget?
+    @State private var postRunCelebration: PostRunCelebration?
+    @State private var celebrationDismissTask: Task<Void, Never>?
+    @State private var handledSyncRevision = 0
+    @State private var shareItems: [Any] = []
+    @State private var showingShareSheet = false
     @State private var showPortalEffect = false
     @State private var portalPulse = false
     #if DEBUG
@@ -131,6 +139,21 @@ struct MapScreen: View {
                         ConnectStravaCard()
                     }
 
+                    if let postRunCelebration {
+                        PostRunCelebrationCard(
+                            milesAdvanced: postRunCelebration.milesAdvanced,
+                            locationName: postRunCelebration.locationName,
+                            onDismiss: dismissCelebration,
+                            onShare: {
+                                shareCelebration(
+                                    postRunCelebration,
+                                    route: route
+                                )
+                            }
+                        )
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+
                     RouteProgressCard(
                         route: route,
                         progress: progress,
@@ -171,6 +194,7 @@ struct MapScreen: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 8)
+                .animation(StrideByTheme.defaultSpring, value: postRunCelebration?.id)
             }
         }
         .overlay(alignment: .topTrailing) {
@@ -221,13 +245,24 @@ struct MapScreen: View {
                 }
             }
         }
+        .onChange(of: progressManager.syncRevision) { _, revision in
+            guard revision > handledSyncRevision else { return }
+            handledSyncRevision = revision
+
+            guard progressManager.lastSyncGainMiles > 0, let route else { return }
+            let locationName = route.nearestLocationName(atMiles: completedMiles)
+            showCelebration(
+                milesAdvanced: progressManager.lastSyncGainMiles,
+                locationName: locationName
+            )
+        }
         .onChange(of: isRouteComplete) { _, complete in
             // Auto-mark route complete when threshold is crossed
             if complete {
                 routeManager.markActiveRouteComplete()
             }
         }
-        .fullScreenCover(item: $lookAroundTarget) { target in
+        .sheet(item: $lookAroundTarget) { target in
             LookAroundSheet(
                 locationName: target.name,
                 coordinate: target.coordinate,
@@ -236,6 +271,26 @@ struct MapScreen: View {
                 completedMiles: target.completedMiles,
                 routeName: target.routeName,
                 route: target.route
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showingShareSheet) {
+            ShareSheet(
+                activityItems: shareItems,
+                onComplete: { completed, activityType in
+                    if completed {
+                        analytics.track("share_completed", properties: [
+                            "surface": "post_run_celebration",
+                            "activity_type": activityType ?? "unknown"
+                        ])
+                    } else {
+                        analytics.track("share_cancelled", properties: [
+                            "surface": "post_run_celebration",
+                            "activity_type": activityType ?? "none"
+                        ])
+                    }
+                }
             )
         }
         #if DEBUG
@@ -302,6 +357,76 @@ struct MapScreen: View {
             }
             portalPulse = false
         }
+    }
+
+    private func showCelebration(milesAdvanced: Double, locationName: String) {
+        celebrationDismissTask?.cancel()
+        postRunCelebration = PostRunCelebration(
+            milesAdvanced: milesAdvanced,
+            locationName: locationName
+        )
+        analytics.track("post_run_celebration_shown", properties: [
+            "route_id": route?.id ?? "unknown",
+            "location_name": locationName,
+            "miles_advanced": milesAdvanced.formatted(.number.precision(.fractionLength(2)))
+        ])
+        celebrationDismissTask = Task {
+            try? await Task.sleep(for: .seconds(9))
+            if !Task.isCancelled {
+                await MainActor.run {
+                    dismissCelebration()
+                }
+            }
+        }
+    }
+
+    private func dismissCelebration() {
+        celebrationDismissTask?.cancel()
+        celebrationDismissTask = nil
+        postRunCelebration = nil
+    }
+
+    @MainActor
+    private func shareCelebration(_ celebration: PostRunCelebration, route: RunRoute) {
+        analytics.track("share_tap", properties: [
+            "surface": "post_run_celebration",
+            "route_id": route.id,
+            "location_name": celebration.locationName
+        ])
+        guard let image = PostRunShareCardRenderer.makeStoryImage(
+            route: route,
+            locationName: celebration.locationName,
+            milesAdvanced: celebration.milesAdvanced,
+            totalMilesOnRoute: completedMiles
+        ) else {
+            analytics.track("share_prepare_failed", properties: [
+                "surface": "post_run_celebration",
+                "route_id": route.id
+            ])
+            return
+        }
+
+        let caption = shareCaption(
+            route: route,
+            locationName: celebration.locationName,
+            milesAdvanced: celebration.milesAdvanced
+        )
+        shareItems = [caption, image]
+        analytics.track("share_sheet_opened", properties: [
+            "surface": "post_run_celebration",
+            "route_id": route.id
+        ])
+        showingShareSheet = true
+    }
+
+    private func shareCaption(route: RunRoute, locationName: String, milesAdvanced: Double) -> String {
+        let miles = milesAdvanced.formatted(.number.precision(.fractionLength(1)))
+        let presets = [
+            "Ran in my neighborhood, landed in \(locationName).",
+            "Cardio passport stamped: \(locationName).",
+            "Moved \(miles) miles on \(route.name)."
+        ]
+        return presets.randomElement() ?? presets[0]
     }
 }
 
@@ -370,6 +495,15 @@ private struct DebugMilesOverlay: View {
                 }
             }
 
+            HStack(spacing: 4) {
+                Button("Sync +3") {
+                    progressManager.simulateDebugSyncGain(3)
+                }
+                Button("Sync +8") {
+                    progressManager.simulateDebugSyncGain(8)
+                }
+            }
+
             Button("Reset Route") {
                 routeManager.resetDebugRouteProgress(currentTotalMiles: progressManager.totalMiles)
             }
@@ -408,9 +542,6 @@ private struct LookAroundPortalEffectView: View {
 
             PortalTunnelRingsView(isPulsing: isPulsing)
 
-            #if canImport(Lottie)
-            LottiePortalWarpLayer(isPulsing: isPulsing)
-            #else
             Circle()
                 .fill(
                     RadialGradient(
@@ -426,7 +557,6 @@ private struct LookAroundPortalEffectView: View {
                 )
                 .frame(width: isPulsing ? 520 : 120, height: isPulsing ? 520 : 120)
                 .blur(radius: isPulsing ? 0 : 6)
-            #endif
 
             VStack(spacing: 10) {
                 Image(systemName: "sparkles")
@@ -461,94 +591,11 @@ private struct PortalTunnelRingsView: View {
     }
 }
 
-#if canImport(Lottie)
-private struct LottiePortalWarpLayer: View {
-    let isPulsing: Bool
-    private let hasAnimation = LottieAnimation.named("portal_warp") != nil
-
-    var body: some View {
-        Group {
-            if hasAnimation {
-                LottiePortalAnimationView(animationName: "portal_warp", play: isPulsing)
-                    .opacity(isPulsing ? 1.0 : 0.4)
-                    .scaleEffect(isPulsing ? 1.45 : 0.85)
-                    .blendMode(.screen)
-            } else {
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [
-                                .white.opacity(0.35),
-                                .blue.opacity(0.45),
-                                .black.opacity(0.9),
-                                .clear,
-                            ],
-                            center: .center,
-                            startRadius: 12,
-                            endRadius: 260
-                        )
-                    )
-                    .frame(width: isPulsing ? 620 : 160, height: isPulsing ? 620 : 160)
-            }
-        }
-        .blur(radius: isPulsing ? 0 : 2)
-        .animation(.easeOut(duration: 0.42), value: isPulsing)
-    }
-}
-
-private struct LottiePortalAnimationView: UIViewRepresentable {
-    let animationName: String
-    let play: Bool
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-
-    func makeUIView(context: Context) -> UIView {
-        let container = UIView(frame: .zero)
-        container.backgroundColor = .clear
-
-        let animationView = LottieAnimationView()
-        animationView.translatesAutoresizingMaskIntoConstraints = false
-        animationView.contentMode = .scaleAspectFill
-        animationView.backgroundBehavior = .pauseAndRestore
-        animationView.loopMode = .playOnce
-        animationView.animation = LottieAnimation.named(animationName)
-
-        container.addSubview(animationView)
-        NSLayoutConstraint.activate([
-            animationView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            animationView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            animationView.topAnchor.constraint(equalTo: container.topAnchor),
-            animationView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-        ])
-
-        context.coordinator.animationView = animationView
-        return container
-    }
-
-    func updateUIView(_ uiView: UIView, context: Context) {
-        guard let animationView = context.coordinator.animationView else { return }
-
-        if play, context.coordinator.lastPlayState == false {
-            animationView.currentProgress = 0
-            animationView.play()
-        }
-
-        context.coordinator.lastPlayState = play
-    }
-
-    final class Coordinator {
-        var animationView: LottieAnimationView?
-        var lastPlayState = false
-    }
-}
-#endif
-
 #Preview {
     MapScreen()
         .environment(StravaAuthService())
         .environment(RunProgressManager())
         .environment(RouteManager())
         .environment(RouteGeometryManager())
+        .environment(AnalyticsService())
 }

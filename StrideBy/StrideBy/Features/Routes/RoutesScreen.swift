@@ -11,6 +11,7 @@ import SwiftUI
 struct RoutesScreen: View {
     @Environment(RouteManager.self) private var routeManager
     @Environment(RunProgressManager.self) private var progressManager
+    @Environment(AnalyticsService.self) private var analytics
 
     @State private var routeToConfirm: RunRoute?
     var onRouteStarted: (() -> Void)? = nil
@@ -51,6 +52,11 @@ struct RoutesScreen: View {
                     route: route,
                     onStart: {
                         routeManager.startRoute(route, currentTotalMiles: progressManager.totalMiles)
+                        analytics.track("route_started", properties: [
+                            "route_id": route.id,
+                            "route_name": route.name,
+                            "start_miles_total": progressManager.totalMiles.formatted(.number.precision(.fractionLength(2)))
+                        ])
                         onRouteStarted?()
                         routeToConfirm = nil
                     },

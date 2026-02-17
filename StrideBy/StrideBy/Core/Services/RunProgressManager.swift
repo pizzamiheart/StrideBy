@@ -18,6 +18,8 @@ final class RunProgressManager {
     var runCount: Int = 0
     var isLoading = false
     var hasSynced = false
+    var lastSyncGainMiles: Double = 0
+    var syncRevision: Int = 0
 
     // MARK: - Init
 
@@ -37,6 +39,8 @@ final class RunProgressManager {
         defer { isLoading = false }
 
         do {
+            let totalBeforeSync = totalMiles
+            let hadSyncedBefore = hasSynced
             let token = try await auth.validAccessToken()
             var allMiles: Double = 0
             var count = 0
@@ -65,6 +69,10 @@ final class RunProgressManager {
             totalMiles = allMiles
             runCount = count
             hasSynced = true
+            lastSyncGainMiles = hadSyncedBefore
+                ? max(0, allMiles - totalBeforeSync)
+                : 0
+            syncRevision += 1
 
             // Cache locally
             UserDefaults.standard.set(totalMiles, forKey: "strideby_total_miles")
@@ -86,11 +94,27 @@ final class RunProgressManager {
         UserDefaults.standard.set(runCount, forKey: "strideby_run_count")
     }
 
+    /// Simulates a new sync result with additional miles and emits a sync revision
+    /// so post-sync UI (celebrations, etc.) can be tested instantly.
+    func simulateDebugSyncGain(_ miles: Double) {
+        let gain = max(0, miles)
+        totalMiles += gain
+        runCount += 1
+        hasSynced = true
+        lastSyncGainMiles = gain
+        syncRevision += 1
+
+        UserDefaults.standard.set(totalMiles, forKey: "strideby_total_miles")
+        UserDefaults.standard.set(runCount, forKey: "strideby_run_count")
+        UserDefaults.standard.set(true, forKey: "strideby_has_synced")
+    }
+
     /// Resets all progress to zero. Only available in debug builds.
     func resetDebugProgress() {
         totalMiles = 0
         runCount = 0
         hasSynced = false
+        lastSyncGainMiles = 0
         UserDefaults.standard.set(0.0, forKey: "strideby_total_miles")
         UserDefaults.standard.set(0, forKey: "strideby_run_count")
         UserDefaults.standard.set(false, forKey: "strideby_has_synced")

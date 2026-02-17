@@ -19,8 +19,6 @@ import SwiftUI
 /// 5. If nothing found, show a rich satellite card with "Explore Nearest Town" options
 @MainActor
 struct LookAroundSheet: View {
-    @Environment(\.dismiss) private var dismiss
-
     let locationName: String
     let coordinate: CLLocationCoordinate2D
     let seedCoordinates: [CLLocationCoordinate2D]
@@ -32,9 +30,6 @@ struct LookAroundSheet: View {
     @State private var scene: MKLookAroundScene?
     @State private var isLoading = true
     @State private var resolvedCoordinate: CLLocationCoordinate2D?
-    @State private var showInteractionHint = true
-    @State private var hintPulse = false
-    @State private var hintCanDismiss = false
 
     // POI jump state (Part 2)
     @State private var jumpedPOI: Landmark?
@@ -72,8 +67,6 @@ struct LookAroundSheet: View {
                 await loadScene()
             }
 
-            closeButton
-
             VStack {
                 // Location name badge + jumped POI banner
                 VStack(spacing: 6) {
@@ -100,23 +93,6 @@ struct LookAroundSheet: View {
             .padding(.leading, 86)
             .allowsHitTesting(jumpedPOI != nil) // allow hit testing only for "back" button
 
-            if showInteractionHint, scene != nil {
-                interactionHint
-                    .allowsHitTesting(false)
-            }
-        }
-        .onAppear {
-            showInteractionHint = true
-            hintCanDismiss = false
-            hintPulse = false
-            withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
-                hintPulse = true
-            }
-
-            Task {
-                try? await Task.sleep(for: .milliseconds(900))
-                hintCanDismiss = true
-            }
         }
     }
 
@@ -125,15 +101,6 @@ struct LookAroundSheet: View {
     private func lookAroundView(scene: MKLookAroundScene) -> some View {
         LookAroundPreview(initialScene: scene, allowsNavigation: true)
             .ignoresSafeArea()
-            .onTapGesture {
-                hideInteractionHint()
-            }
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 1)
-                    .onChanged { _ in
-                        hideInteractionHint()
-                    }
-            )
     }
 
     // MARK: - Jumped POI Banner
@@ -400,40 +367,6 @@ struct LookAroundSheet: View {
     }
 
     // MARK: - UI Components
-
-    private var closeButton: some View {
-        Button("Close") {
-            dismiss()
-        }
-        .buttonStyle(.borderedProminent)
-        .tint(.black.opacity(0.65))
-        .padding(.top, 18)
-        .padding(.leading, 16)
-    }
-
-    private var interactionHint: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "hand.tap")
-                .font(.title2)
-            Text("Tap or drag to look around")
-                .font(.caption)
-                .fontWeight(.medium)
-        }
-        .foregroundStyle(.white)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(.black.opacity(0.5), in: Capsule())
-        .scaleEffect(hintPulse ? 1.05 : 0.95)
-        .opacity(hintPulse ? 1.0 : 0.7)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private func hideInteractionHint() {
-        guard showInteractionHint, hintCanDismiss else { return }
-        withAnimation(.easeOut(duration: 0.2)) {
-            showInteractionHint = false
-        }
-    }
 
     private func debugLog(_ message: String) {
         #if DEBUG
