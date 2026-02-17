@@ -89,3 +89,94 @@ Create a lightweight, repeatable sharing loop where each run produces a delightf
 - Event table for share funnel telemetry.
 - Signed URL/image hosting for durable cards.
 - Background job support for async card rendering if needed.
+
+---
+
+## Post-Run Cinematic Replay (MVP Spec)
+
+### Product Direction
+Replace the single post-run "where am I now?" moment with a short replay of the distance just completed on the selected city route.
+
+### Core UX
+- After each synced run, user gets a 20-30 second replay:
+  - Animated path segment for this run's miles
+  - City/landmark highlights along that segment
+  - Distance, pace, elevation overlays
+- Replay should feel like a mini travel episode, not a static map update.
+
+### Why This Solves Current Problem
+- Avoids dependence on one exact Look Around point.
+- Lets us stitch several strong-coverage checkpoints.
+- Creates better emotional payoff and stronger shareability.
+
+### MVP Output (First Shipping Version)
+- Video format: MP4/H.264
+- Length: 20-30 seconds
+- Aspect ratios:
+  - 9:16 (Stories/Reels) primary
+  - 1:1 (Feed) optional
+- Visuals:
+  - Segment start/end markers
+  - Animated route progress line
+  - 3-5 checkpoint cards (landmark names + map snapshots)
+  - Elevation mini-chart synced to timeline
+
+### Data Model (Suggested)
+- `RunReplayPlan`
+  - `run_id`
+  - `route_id`
+  - `start_mile`
+  - `end_mile`
+  - `distance_miles`
+  - `duration_seconds`
+  - `pace`
+  - `elevation_gain_ft`
+  - `checkpoint_miles: [Double]`
+  - `checkpoint_coordinates: [LatLng]`
+  - `checkpoint_titles: [String]`
+
+### Segment Selection Algorithm (MVP)
+1. Determine `start_mile` and `end_mile` from pre-run and post-run route progress.
+2. Sample N evenly spaced checkpoints along that segment (target N = 5).
+3. For each checkpoint, choose best visual source:
+   - 1st: Look Around if available
+   - 2nd: Flyover/hybrid snapshot
+   - 3rd: standard map snapshot fallback
+4. Remove duplicates/low-value checkpoints (too close visually).
+
+### Replay Timeline Template (Example 24s)
+- 0-2s: Title card ("You ran 5.0 mi through Paris")
+- 2-16s: Animated segment progression + checkpoint reveals
+- 16-21s: Stats panel (distance, pace, elevation)
+- 21-24s: End card ("Now at Mile X on [Route]") + share CTA
+
+### iOS Implementation Notes
+- Rendering:
+  - SwiftUI views rendered frame-by-frame
+  - `AVAssetWriter` for video assembly
+- Snapshot fetch:
+  - Preload all checkpoint visuals first
+  - Timeout + fallback strategy per checkpoint
+- Performance:
+  - Generate replay asynchronously after sync
+  - Cache generated videos by `run_id`
+
+### Rollout Plan
+1. V1: map-based cinematic replay (no continuous street-level video)
+2. V1.1: richer transitions + branded motion style
+3. V2: optional "street snippets" from high-confidence Look Around checkpoints
+4. V2.1: one-tap share composer with caption presets
+
+### Success Metrics
+- Replay completion rate
+- Replay share rate
+- Share-to-install conversion
+- D7 retention delta between users who watch replay vs skip
+
+### Deferred: Full Street-Level Autoplay
+- We tested a `Watch Run` street-tour prototype and intentionally removed it from the app.
+- Reason: Apple Look Around API does not provide the same continuous forward-navigation control as native Apple Maps interaction, so the result felt like stitched scene hops in a sheet rather than true in-street movement.
+- Revisit only if:
+  - We can get smoother camera-path control from Apple APIs, or
+  - We move to a provider/workflow that supports continuous street-level playback.
+- Until then, prefer map-first cinematic replay and optional high-confidence street snippets.

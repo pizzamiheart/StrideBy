@@ -13,7 +13,6 @@ struct RouteProgressCard: View {
     var isSyncing: Bool = false
     var isComplete: Bool = false
     var onLookAroundHere: (() -> Void)?
-    var onLookAroundNearestPOI: (() -> Void)?
 
     private var percentComplete: Double {
         guard route.totalDistanceMiles > 0 else { return 0 }
@@ -27,48 +26,53 @@ struct RouteProgressCard: View {
             .map { $0 }
     }
 
+    private var locationText: String {
+        if isComplete {
+            return "Route Complete"
+        } else if progress.completedMiles > 0 {
+            return progress.nearestLocationName
+        } else {
+            return route.origin
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
 
-            // Route header
+            // Route context + percentage
             HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("\(route.origin) → \(route.destination)")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.primary)
-
-                    HStack(spacing: 4) {
-                        if isComplete {
-                            Text("Route Complete!")
-                                .foregroundStyle(StrideByTheme.accent)
-                                .fontWeight(.medium)
-                        } else if progress.completedMiles > 0 {
-                            Text("Near \(progress.nearestLocationName)")
-                        } else {
-                            Text("Starting in \(route.origin)")
-                        }
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 5) {
+                        Text("\(route.origin) → \(route.destination)")
+                            .font(.system(.caption2, design: .rounded))
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.secondary)
+                            .tracking(0.3)
 
                         if isSyncing {
                             ProgressView()
                                 .controlSize(.mini)
                         }
                     }
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+
+                    // Hero location
+                    Text(locationText)
+                        .font(.title3)
+                        .fontWeight(.bold)
+                        .foregroundStyle(isComplete ? StrideByTheme.accent : .primary)
                 }
 
                 Spacer()
 
                 if isComplete {
-                    Image(systemName: "checkmark.circle.fill")
+                    Image(systemName: "checkmark.seal.fill")
                         .font(.title2)
                         .foregroundStyle(StrideByTheme.accent)
                         .symbolEffect(.bounce, value: isComplete)
                 } else {
                     Text("\(Int(percentComplete * 100))%")
-                        .font(.title2)
-                        .fontWeight(.bold)
+                        .font(.system(.title, design: .rounded))
+                        .fontWeight(.heavy)
                         .foregroundStyle(StrideByTheme.accent)
                         .contentTransition(.numericText())
                         .animation(StrideByTheme.defaultSpring, value: percentComplete)
@@ -79,25 +83,22 @@ struct RouteProgressCard: View {
             VStack(spacing: 6) {
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
-                        // Track
-                        RoundedRectangle(cornerRadius: 3)
+                        RoundedRectangle(cornerRadius: 4)
                             .fill(.quaternary)
-                            .frame(height: 6)
+                            .frame(height: 8)
 
-                        // Fill
-                        RoundedRectangle(cornerRadius: 3)
+                        RoundedRectangle(cornerRadius: 4)
                             .fill(StrideByTheme.accent)
-                            .frame(width: geo.size.width * percentComplete, height: 6)
+                            .frame(width: geo.size.width * percentComplete, height: 8)
                             .animation(StrideByTheme.defaultSpring, value: percentComplete)
                     }
                 }
-                .frame(height: 6)
+                .frame(height: 8)
 
-                // Mile markers
                 HStack {
                     Text("\(Int(progress.completedMiles)) mi")
                         .font(.caption2)
-                        .fontWeight(.medium)
+                        .fontWeight(.semibold)
                         .foregroundStyle(StrideByTheme.accent)
                         .contentTransition(.numericText())
                         .animation(StrideByTheme.defaultSpring, value: progress.completedMiles)
@@ -110,64 +111,54 @@ struct RouteProgressCard: View {
                 }
             }
 
-            // Look Around buttons — shown when in progress and not complete
+            // Look Around CTA — full-width prominent button
             if progress.completedMiles > 0 && !isComplete {
-                HStack(spacing: 10) {
-                    if onLookAroundHere != nil {
-                        Button {
-                            onLookAroundHere?()
-                        } label: {
-                            Label("Look Around", systemImage: "binoculars.fill")
-                                .font(.caption)
-                                .fontWeight(.medium)
+                if let onLookAroundHere {
+                    Button {
+                        onLookAroundHere()
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "binoculars.fill")
+                            Text("Look Around")
+                                .fontWeight(.semibold)
                         }
-                        .buttonStyle(.bordered)
-                        .tint(StrideByTheme.accent)
-                        .controlSize(.small)
+                        .font(.subheadline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
                     }
-
-                    if onLookAroundNearestPOI != nil {
-                        Button {
-                            onLookAroundNearestPOI?()
-                        } label: {
-                            Label("Nearest Place", systemImage: "building.2.fill")
-                                .font(.caption)
-                                .fontWeight(.medium)
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(StrideByTheme.accent)
-                        .controlSize(.small)
-                    }
-
-                    Spacer()
+                    .buttonStyle(.borderedProminent)
+                    .tint(StrideByTheme.accent)
                 }
             }
 
-            // Completion celebration or upcoming landmarks
+            // Completion or upcoming landmarks
             if isComplete {
-                VStack(spacing: 8) {
-                    Text("You ran \(route.origin) to \(route.destination)!")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity)
-                }
+                Text("You ran \(route.origin) to \(route.destination)!")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
             } else if !upcomingLandmarks.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 10) {
                     Text("AHEAD")
-                        .font(.caption2)
-                        .fontWeight(.semibold)
+                        .font(.system(.caption2, design: .rounded))
+                        .fontWeight(.bold)
                         .foregroundStyle(.tertiary)
-                        .tracking(0.5)
+                        .tracking(0.8)
 
                     ForEach(upcomingLandmarks) { landmark in
-                        HStack(spacing: 8) {
-                            Image(systemName: "mappin.circle.fill")
-                                .font(.caption)
-                                .foregroundStyle(StrideByTheme.accent.opacity(0.6))
+                        HStack(spacing: 10) {
+                            Circle()
+                                .fill(StrideByTheme.accent.opacity(0.12))
+                                .frame(width: 28, height: 28)
+                                .overlay(
+                                    Image(systemName: "mappin")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundStyle(StrideByTheme.accent)
+                                )
 
                             Text(landmark.name)
-                                .font(.caption)
-                                .foregroundStyle(.primary)
+                                .font(.subheadline)
+                                .fontWeight(.medium)
 
                             Spacer()
 
@@ -182,7 +173,7 @@ struct RouteProgressCard: View {
         }
         .padding(20)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: StrideByTheme.cardCornerRadius))
-        .shadow(color: .black.opacity(0.08), radius: 20, y: 8)
+        .shadow(color: .black.opacity(0.1), radius: 24, y: 10)
     }
 }
 
@@ -190,8 +181,7 @@ struct RouteProgressCard: View {
     RouteProgressCard(
         route: .parisCityLoop,
         progress: UserProgress(completedMiles: 12, nearestLocationName: "Louvre, Paris"),
-        onLookAroundHere: {},
-        onLookAroundNearestPOI: {}
+        onLookAroundHere: {}
     )
     .padding()
 }

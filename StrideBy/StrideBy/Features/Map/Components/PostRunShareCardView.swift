@@ -26,9 +26,9 @@ struct PostRunShareCardView: View {
         ZStack {
             LinearGradient(
                 colors: [
-                    Color(red: 0.04, green: 0.09, blue: 0.18),
-                    Color(red: 0.03, green: 0.21, blue: 0.33),
-                    Color(red: 0.05, green: 0.38, blue: 0.38),
+                    Color(red: 0.04, green: 0.06, blue: 0.12),
+                    Color(red: 0.04, green: 0.18, blue: 0.26),
+                    Color(red: 0.08, green: 0.42, blue: 0.38),
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing

@@ -142,7 +142,12 @@ private struct RouteExploreCard: View {
         .clipShape(RoundedRectangle(cornerRadius: StrideByTheme.cardCornerRadius))
         .overlay(
             RoundedRectangle(cornerRadius: StrideByTheme.cardCornerRadius)
-                .stroke(.white.opacity(0.4), lineWidth: 1)
+                .strokeBorder(.white.opacity(0.3), lineWidth: 1)
+        )
+        .padding(2.5)
+        .overlay(
+            RoundedRectangle(cornerRadius: StrideByTheme.cardCornerRadius + 2.5)
+                .strokeBorder(Color(red: 0.85, green: 0.75, blue: 0.22).opacity(0.45), lineWidth: 1.5)
         )
         .shadow(color: .black.opacity(0.10), radius: 18, y: 6)
     }
@@ -260,8 +265,6 @@ private struct RouteHeroStyle {
             return .init(country: "Australia", heroPOI: "Sydney Harbour", heroCoordinate: .init(latitude: -33.8610, longitude: 151.2127), symbol: "ferry.fill", colors: [.cyan.opacity(0.85), .blue.opacity(0.7)])
         case "toronto-city-loop":
             return .init(country: "Canada", heroPOI: "Distillery District", heroCoordinate: .init(latitude: 43.6503, longitude: -79.3596), symbol: "leaf.fill", colors: [.red.opacity(0.8), .pink.opacity(0.65)])
-        case "seoul-city-loop":
-            return .init(country: "South Korea", heroPOI: "Gwanghwamun", heroCoordinate: .init(latitude: 37.5759, longitude: 126.9769), symbol: "magnifyingglass.circle.fill", colors: [.indigo.opacity(0.8), .teal.opacity(0.65)])
         default:
             return .init(
                 country: route.destination,

@@ -11,7 +11,12 @@ enum StrideByTheme {
 
     // MARK: - Colors
 
-    static let accent = Color.accentColor
+    /// Primary accent — deep evergreen
+    static let accent = Color(red: 0.12, green: 0.48, blue: 0.32)
+
+    /// Soft glow for route line halos and subtle fills
+    static let accentGlow = accent.opacity(0.3)
+
     static let routeRemaining = Color.gray.opacity(0.3)
 
     // MARK: - Animation
@@ -20,6 +25,6 @@ enum StrideByTheme {
 
     // MARK: - Layout
 
-    static let cardCornerRadius: CGFloat = 20
+    static let cardCornerRadius: CGFloat = 22
     static let routeLineWidth: CGFloat = 5
 }

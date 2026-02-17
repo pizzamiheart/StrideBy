@@ -85,6 +85,20 @@ struct MapScreen: View {
                 // Full-bleed map
                 Map(position: $cameraPosition) {
 
+                    // Route glow — wider halo behind completed segment
+                    MapPolyline(coordinates: route.completedCoordinates(
+                        miles: completedMiles,
+                        using: activeCoordinates(for: route)
+                    ))
+                        .stroke(
+                            StrideByTheme.accentGlow,
+                            style: StrokeStyle(
+                                lineWidth: 14,
+                                lineCap: .round,
+                                lineJoin: .round
+                            )
+                        )
+
                     // Completed route — accent color
                     MapPolyline(coordinates: route.completedCoordinates(
                         miles: completedMiles,
@@ -197,6 +211,11 @@ struct MapScreen: View {
                 .animation(StrideByTheme.defaultSpring, value: postRunCelebration?.id)
             }
         }
+        .overlay(alignment: .top) {
+            if let route {
+                MapRouteHeader(routeName: route.name)
+            }
+        }
         .overlay(alignment: .topTrailing) {
             #if DEBUG
             DebugMilesOverlay(progressManager: progressManager, routeManager: routeManager, showingRouteGenerator: $showingRouteGenerator, showingCoverageAudit: $showingCoverageAudit)
@@ -262,7 +281,7 @@ struct MapScreen: View {
                 routeManager.markActiveRouteComplete()
             }
         }
-        .sheet(item: $lookAroundTarget) { target in
+        .fullScreenCover(item: $lookAroundTarget) { target in
             LookAroundSheet(
                 locationName: target.name,
                 coordinate: target.coordinate,
@@ -272,8 +291,6 @@ struct MapScreen: View {
                 routeName: target.routeName,
                 route: target.route
             )
-            .presentationDetents([.large])
-            .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showingShareSheet) {
             ShareSheet(
@@ -455,6 +472,38 @@ private struct RouteDotView: View {
                 )
                 .shadow(color: .black.opacity(0.15), radius: 3, y: 1)
         }
+    }
+}
+
+// MARK: - Top Branded Header
+
+private struct MapRouteHeader: View {
+    let routeName: String
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Color.clear.frame(height: 0)
+
+            HStack {
+                Text(routeName.uppercased())
+                    .font(.system(.caption, design: .rounded))
+                    .fontWeight(.bold)
+                    .foregroundStyle(.white.opacity(0.8))
+                    .tracking(1.0)
+
+                Spacer()
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+        }
+        .background(
+            LinearGradient(
+                colors: [.black.opacity(0.5), .black.opacity(0.2), .clear],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea(edges: .top)
+        )
     }
 }
 

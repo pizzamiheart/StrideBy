@@ -27,6 +27,8 @@ struct LookAroundSheet: View {
     let routeName: String
     let route: RunRoute?
 
+    @Environment(\.dismiss) private var dismiss
+
     @State private var scene: MKLookAroundScene?
     @State private var isLoading = true
     @State private var resolvedCoordinate: CLLocationCoordinate2D?
@@ -67,31 +69,27 @@ struct LookAroundSheet: View {
                 await loadScene()
             }
 
-            VStack {
-                // Location name badge + jumped POI banner
-                VStack(spacing: 6) {
-                    if scene != nil {
-                        Text(locationName)
-                            .font(.headline)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(.ultraThinMaterial, in: Capsule())
+            // Close button — visible during loading and fallback states
+            // (lookAroundView has its own close button when scene is present)
+            if scene == nil {
+                VStack {
+                    HStack {
+                        Spacer()
+                        Button {
+                            dismiss()
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundStyle(.secondary)
+                                .padding(10)
+                                .background(.ultraThinMaterial, in: Circle())
+                        }
+                        .padding(.top, 16)
+                        .padding(.trailing, 16)
                     }
-
-                    if let jumped = jumpedPOI, scene != nil {
-                        jumpedBanner(poi: jumped)
-                    } else if isUsingNearbyFallback, scene != nil {
-                        Text("Showing nearest available street view nearby.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                    Spacer()
                 }
-                .padding(.top, 18)
-
-                Spacer()
             }
-            .padding(.leading, 86)
-            .allowsHitTesting(jumpedPOI != nil) // allow hit testing only for "back" button
 
         }
     }
@@ -99,33 +97,20 @@ struct LookAroundSheet: View {
     // MARK: - Look Around View
 
     private func lookAroundView(scene: MKLookAroundScene) -> some View {
-        LookAroundPreview(initialScene: scene, allowsNavigation: true)
-            .ignoresSafeArea()
-    }
+        ZStack(alignment: .topLeading) {
+            LookAroundPreview(initialScene: scene, allowsNavigation: true)
+                .ignoresSafeArea()
 
-    // MARK: - Jumped POI Banner
-
-    private func jumpedBanner(poi: Landmark) -> some View {
-        let milesAway = abs(Int(poi.distanceFromStartMiles - completedMiles))
-        return HStack(spacing: 6) {
-            Text("Showing \(poi.name), \(poi.state)")
-                .font(.caption)
-                .fontWeight(.medium)
-            Text("(\(milesAway) mi from your position)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Button {
-                returnToOriginal()
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.caption)
-            }
-            .foregroundStyle(.secondary)
+            // Location badge only — LookAroundPreview has its own native close button
+            Text(locationName)
+                .font(.headline)
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 7)
+                .background(.ultraThinMaterial, in: Capsule())
+                .padding(.leading, 16)
+                .padding(.top, 16)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(.ultraThinMaterial, in: Capsule())
     }
 
     // MARK: - States
@@ -187,11 +172,6 @@ struct LookAroundSheet: View {
         scene = result.scene
         resolvedCoordinate = result.coordinate
         isLoading = false
-    }
-
-    private var isUsingNearbyFallback: Bool {
-        guard let resolvedCoordinate else { return false }
-        return distanceMeters(from: searchCoordinate, to: resolvedCoordinate) > 5
     }
 
     // MARK: - Search Strategy
@@ -374,6 +354,7 @@ struct LookAroundSheet: View {
         #endif
     }
 }
+
 
 private extension CLLocation {
     /// Computes destination coordinate from distance+bearing on a spherical Earth.

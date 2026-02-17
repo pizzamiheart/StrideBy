@@ -215,7 +215,6 @@ extension RunRoute {
         .tokyoCityLoop,
         .sydneyCityLoop,
         .torontoCityLoop,
-        .seoulCityLoop,
     ]
 
     /// Look up a route by its string ID.
