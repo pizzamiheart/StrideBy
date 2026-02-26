@@ -8,13 +8,21 @@
 import SwiftUI
 
 struct PostRunCelebrationCard: View {
+    @AppStorage("strideby_distance_unit") private var distanceUnitRawValue = DistanceUnit.miles.rawValue
+
     let milesAdvanced: Double
     let locationName: String
     var onDismiss: (() -> Void)?
     var onShare: (() -> Void)?
 
     private var milesText: String {
-        milesAdvanced.formatted(.number.precision(.fractionLength(1)))
+        let unit = DistanceUnit(rawValue: distanceUnitRawValue) ?? .miles
+        let value = unit.convert(miles: milesAdvanced)
+        return value.formatted(.number.precision(.fractionLength(1)))
+    }
+
+    private var unitText: String {
+        (DistanceUnit(rawValue: distanceUnitRawValue) ?? .miles).abbreviation
     }
 
     var body: some View {
@@ -41,7 +49,7 @@ struct PostRunCelebrationCard: View {
                 }
             }
 
-            Text("You advanced \(milesText) miles to \(locationName).")
+            Text("You advanced \(milesText) \(unitText) to \(locationName).")
                 .font(.headline)
                 .foregroundStyle(.primary)
 

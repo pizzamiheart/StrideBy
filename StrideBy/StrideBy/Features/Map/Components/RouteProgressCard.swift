@@ -8,6 +8,8 @@
 import SwiftUI
 
 struct RouteProgressCard: View {
+    @AppStorage("strideby_distance_unit") private var distanceUnitRawValue = DistanceUnit.miles.rawValue
+
     let route: RunRoute
     let progress: UserProgress
     var isSyncing: Bool = false
@@ -34,6 +36,10 @@ struct RouteProgressCard: View {
         } else {
             return route.origin
         }
+    }
+
+    private var distanceUnit: DistanceUnit {
+        DistanceUnit(rawValue: distanceUnitRawValue) ?? .miles
     }
 
     var body: some View {
@@ -96,7 +102,7 @@ struct RouteProgressCard: View {
                 .frame(height: 8)
 
                 HStack {
-                    Text("\(Int(progress.completedMiles)) mi")
+                    Text(distanceText(progress.completedMiles))
                         .font(.caption2)
                         .fontWeight(.semibold)
                         .foregroundStyle(StrideByTheme.accent)
@@ -105,7 +111,7 @@ struct RouteProgressCard: View {
 
                     Spacer()
 
-                    Text("\(Int(route.totalDistanceMiles)) mi")
+                    Text(distanceText(route.totalDistanceMiles))
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
@@ -162,8 +168,8 @@ struct RouteProgressCard: View {
 
                             Spacer()
 
-                            let milesAway = Int(landmark.distanceFromStartMiles - progress.completedMiles)
-                            Text("\(milesAway) mi")
+                            let milesAway = max(0, landmark.distanceFromStartMiles - progress.completedMiles)
+                            Text(distanceText(milesAway))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -174,6 +180,11 @@ struct RouteProgressCard: View {
         .padding(20)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: StrideByTheme.cardCornerRadius))
         .shadow(color: .black.opacity(0.1), radius: 24, y: 10)
+    }
+
+    private func distanceText(_ miles: Double) -> String {
+        let converted = distanceUnit.convert(miles: miles)
+        return "\(Int(converted.rounded())) \(distanceUnit.abbreviation)"
     }
 }
 

@@ -15,5 +15,9 @@
 			</array>
 		</dict>
 	</array>
+	<key>STRAVA_CLIENT_ID</key>
+	<string>$(STRAVA_CLIENT_ID)</string>
+	<key>STRAVA_CLIENT_SECRET</key>
+	<string>$(STRAVA_CLIENT_SECRET)</string>
 </dict>
 </plist>

@@ -8,6 +8,7 @@
 import Foundation
 import MapKit
 import SwiftUI
+import UIKit
 
 /// A sheet that displays Apple Look Around street-level imagery for a given coordinate.
 ///
@@ -24,14 +25,19 @@ struct LookAroundSheet: View {
     let seedCoordinates: [CLLocationCoordinate2D]
     let searchQueries: [String]
     let completedMiles: Double
+    let lastRunMiles: Double
     let routeName: String
     let route: RunRoute?
 
     @Environment(\.dismiss) private var dismiss
 
     @State private var scene: MKLookAroundScene?
+    @State private var captureScene: MKLookAroundScene?
     @State private var isLoading = true
     @State private var resolvedCoordinate: CLLocationCoordinate2D?
+    @State private var isPreparingComposer = false
+    @State private var composeError: String?
+    @State private var composerDraft: DropPinDraft?
 
     // POI jump state (Part 2)
     @State private var jumpedPOI: Landmark?
@@ -69,28 +75,36 @@ struct LookAroundSheet: View {
                 await loadScene()
             }
 
-            // Close button — visible during loading and fallback states
-            // (lookAroundView has its own close button when scene is present)
-            if scene == nil {
-                VStack {
-                    HStack {
-                        Spacer()
-                        Button {
-                            dismiss()
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundStyle(.secondary)
-                                .padding(10)
-                                .background(.ultraThinMaterial, in: Circle())
-                        }
-                        .padding(.top, 16)
-                        .padding(.trailing, 16)
-                    }
+            VStack {
+                HStack {
                     Spacer()
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(.secondary)
+                            .padding(10)
+                            .background(.ultraThinMaterial, in: Circle())
+                    }
+                    .padding(.top, 16)
+                    .padding(.trailing, 16)
                 }
+                Spacer()
             }
-
+        }
+        .fullScreenCover(item: $composerDraft) { draft in
+            DropPinComposerScreen(draft: draft)
+        }
+        .alert("Couldn’t Capture View", isPresented: Binding(
+            get: { composeError != nil },
+            set: { isPresented in
+                if !isPresented { composeError = nil }
+            }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(composeError ?? "Try again.")
         }
     }
 
@@ -98,10 +112,16 @@ struct LookAroundSheet: View {
 
     private func lookAroundView(scene: MKLookAroundScene) -> some View {
         ZStack(alignment: .topLeading) {
-            LookAroundPreview(initialScene: scene, allowsNavigation: true)
+            LookAroundCaptureView(initialScene: scene) { updatedScene in
+                captureScene = updatedScene
+            }
                 .ignoresSafeArea()
+                .onAppear {
+                    if captureScene == nil {
+                        captureScene = scene
+                    }
+                }
 
-            // Location badge only — LookAroundPreview has its own native close button
             Text(locationName)
                 .font(.headline)
                 .foregroundStyle(.primary)
@@ -110,6 +130,38 @@ struct LookAroundSheet: View {
                 .background(.ultraThinMaterial, in: Capsule())
                 .padding(.leading, 16)
                 .padding(.top, 16)
+
+            VStack {
+                Spacer()
+                Button {
+                    Task { await prepareComposer(from: scene) }
+                } label: {
+                    Label(
+                        isPreparingComposer ? "Preparing…" : "Share The View",
+                        systemImage: "square.and.arrow.up.fill"
+                    )
+                    .font(.headline)
+                    .fontWeight(.bold)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 13)
+                    .background(
+                        LinearGradient(
+                            colors: [StrideByTheme.accent, Color(red: 0.08, green: 0.32, blue: 0.66)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        ),
+                        in: Capsule()
+                    )
+                    .overlay(
+                        Capsule()
+                            .stroke(.white.opacity(0.35), lineWidth: 1)
+                    )
+                    .shadow(color: .black.opacity(0.28), radius: 10, y: 4)
+                }
+                .disabled(isPreparingComposer)
+                .padding(.bottom, 28)
+            }
         }
     }
 
@@ -170,6 +222,7 @@ struct LookAroundSheet: View {
         resolvedCoordinate = nil
         let result = await findBestScene(near: searchCoordinate)
         scene = result.scene
+        captureScene = result.scene
         resolvedCoordinate = result.coordinate
         isLoading = false
     }
@@ -346,9 +399,89 @@ struct LookAroundSheet: View {
             .distance(from: CLLocation(latitude: to.latitude, longitude: to.longitude))
     }
 
+    // MARK: - Share
+
+    private func prepareComposer(from scene: MKLookAroundScene) async {
+        guard !isPreparingComposer else { return }
+        isPreparingComposer = true
+        defer { isPreparingComposer = false }
+
+        let selectedScene = captureScene ?? scene
+
+        guard let lookAroundImage = await snapshotImage(for: selectedScene) else {
+            composeError = "Couldn’t capture this frame yet. Move slightly and try again."
+            return
+        }
+
+        composerDraft = DropPinDraft(
+            capturedImage: lookAroundImage,
+            initialScene: selectedScene,
+            route: route,
+            routeName: routeName,
+            locationName: locationName,
+            completedMiles: completedMiles,
+            lastRunMiles: lastRunMiles
+        )
+    }
+
+    private func snapshotImage(for scene: MKLookAroundScene) async -> UIImage? {
+        let options = MKLookAroundSnapshotter.Options()
+        options.size = CGSize(width: 1080, height: 1320)
+
+        let snapshotter = MKLookAroundSnapshotter(scene: scene, options: options)
+        do {
+            let snapshot = try await snapshotter.snapshot
+            return snapshot.image
+        } catch {
+            debugLog("snapshot failed: \(error.localizedDescription)")
+            return nil
+        }
+    }
+}
+
+private struct LookAroundCaptureView: UIViewControllerRepresentable {
+    let initialScene: MKLookAroundScene
+    var onSceneDidChange: (MKLookAroundScene) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onSceneDidChange: onSceneDidChange)
+    }
+
+    func makeUIViewController(context: Context) -> MKLookAroundViewController {
+        let controller = MKLookAroundViewController(scene: initialScene)
+        controller.isNavigationEnabled = true
+        controller.showsRoadLabels = true
+        controller.badgePosition = .bottomTrailing
+        controller.delegate = context.coordinator
+        return controller
+    }
+
+    func updateUIViewController(_ controller: MKLookAroundViewController, context: Context) {
+        context.coordinator.onSceneDidChange = onSceneDidChange
+        if controller.scene == nil {
+            controller.scene = initialScene
+        }
+    }
+
+    final class Coordinator: NSObject, MKLookAroundViewControllerDelegate {
+        var onSceneDidChange: (MKLookAroundScene) -> Void
+
+        init(onSceneDidChange: @escaping (MKLookAroundScene) -> Void) {
+            self.onSceneDidChange = onSceneDidChange
+        }
+
+        func lookAroundViewControllerDidUpdateScene(_ viewController: MKLookAroundViewController) {
+            if let scene = viewController.scene {
+                onSceneDidChange(scene)
+            }
+        }
+    }
+}
+
+private extension LookAroundSheet {
     // MARK: - UI Components
 
-    private func debugLog(_ message: String) {
+    func debugLog(_ message: String) {
         #if DEBUG
         print("LookAroundSheet[\(locationName)]: \(message)")
         #endif
@@ -390,6 +523,7 @@ private extension CLLocation {
         seedCoordinates: [],
         searchQueries: [],
         completedMiles: 0,
+        lastRunMiles: 0,
         routeName: "Paris Arrondissement Tour",
         route: .parisCityLoop
     )
@@ -402,6 +536,7 @@ private extension CLLocation {
         seedCoordinates: [],
         searchQueries: [],
         completedMiles: 12,
+        lastRunMiles: 0,
         routeName: "Paris Arrondissement Tour",
         route: .parisCityLoop
     )

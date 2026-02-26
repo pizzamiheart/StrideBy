@@ -16,6 +16,7 @@ private struct LookAroundTarget: Identifiable {
     let seedCoordinates: [CLLocationCoordinate2D]
     let searchQueries: [String]
     let completedMiles: Double
+    let lastRunMiles: Double
     let routeName: String
     let route: RunRoute?
 }
@@ -32,6 +33,7 @@ struct MapScreen: View {
     @Environment(RouteManager.self) private var routeManager
     @Environment(RouteGeometryManager.self) private var routeGeometryManager
     @Environment(AnalyticsService.self) private var analytics
+    @AppStorage("strideby_distance_unit") private var distanceUnitRawValue = DistanceUnit.miles.rawValue
 
     @State private var cameraPosition: MapCameraPosition = .automatic
     @State private var lookAroundTarget: LookAroundTarget?
@@ -42,10 +44,6 @@ struct MapScreen: View {
     @State private var showingShareSheet = false
     @State private var showPortalEffect = false
     @State private var portalPulse = false
-    #if DEBUG
-    @State private var showingRouteGenerator = false
-    @State private var showingCoverageAudit = false
-    #endif
 
     private var route: RunRoute? {
         routeManager.activeRoute
@@ -198,6 +196,7 @@ struct MapScreen: View {
                                     seedCoordinates: [coord] + routeCandidates,
                                     searchQueries: [],
                                     completedMiles: completedMiles,
+                                    lastRunMiles: progressManager.latestRunMiles,
                                     routeName: route.name,
                                     route: route
                                 )
@@ -215,11 +214,6 @@ struct MapScreen: View {
             if let route {
                 MapRouteHeader(routeName: route.name)
             }
-        }
-        .overlay(alignment: .topTrailing) {
-            #if DEBUG
-            DebugMilesOverlay(progressManager: progressManager, routeManager: routeManager, showingRouteGenerator: $showingRouteGenerator, showingCoverageAudit: $showingCoverageAudit)
-            #endif
         }
         .overlay {
             if showPortalEffect {
@@ -288,6 +282,7 @@ struct MapScreen: View {
                 seedCoordinates: target.seedCoordinates,
                 searchQueries: target.searchQueries,
                 completedMiles: target.completedMiles,
+                lastRunMiles: target.lastRunMiles,
                 routeName: target.routeName,
                 route: target.route
             )
@@ -310,14 +305,6 @@ struct MapScreen: View {
                 }
             )
         }
-        #if DEBUG
-        .sheet(isPresented: $showingRouteGenerator) {
-            RouteGeneratorSheet()
-        }
-        .sheet(isPresented: $showingCoverageAudit) {
-            CoverageAuditSheet()
-        }
-        #endif
     }
 
     private func activeCoordinates(for route: RunRoute) -> [CLLocationCoordinate2D] {
@@ -437,11 +424,13 @@ struct MapScreen: View {
     }
 
     private func shareCaption(route: RunRoute, locationName: String, milesAdvanced: Double) -> String {
-        let miles = milesAdvanced.formatted(.number.precision(.fractionLength(1)))
+        let unit = DistanceUnit(rawValue: distanceUnitRawValue) ?? .miles
+        let distanceText = unit.convert(miles: milesAdvanced).formatted(.number.precision(.fractionLength(1)))
+        let unitLabel = unit.abbreviation
         let presets = [
             "Ran in my neighborhood, landed in \(locationName).",
             "Cardio passport stamped: \(locationName).",
-            "Moved \(miles) miles on \(route.name)."
+            "Moved \(distanceText) \(unitLabel) on \(route.name)."
         ]
         return presets.randomElement() ?? presets[0]
     }
@@ -506,79 +495,6 @@ private struct MapRouteHeader: View {
         )
     }
 }
-
-// MARK: - Debug Overlay
-
-#if DEBUG
-private struct DebugMilesOverlay: View {
-    let progressManager: RunProgressManager
-    let routeManager: RouteManager
-    @Binding var showingRouteGenerator: Bool
-    @Binding var showingCoverageAudit: Bool
-
-    var body: some View {
-        VStack(spacing: 6) {
-            Text("DEBUG")
-                .font(.caption2)
-                .fontWeight(.bold)
-                .foregroundStyle(.white.opacity(0.7))
-
-            HStack(spacing: 4) {
-                Button("+1") {
-                    progressManager.addDebugMiles(1)
-                }
-                Button("+5") {
-                    progressManager.addDebugMiles(5)
-                }
-                Button("+20") {
-                    progressManager.addDebugMiles(20)
-                }
-            }
-
-            HStack(spacing: 4) {
-                Button("+50") {
-                    progressManager.addDebugMiles(50)
-                }
-                Button("+200") {
-                    progressManager.addDebugMiles(200)
-                }
-            }
-
-            HStack(spacing: 4) {
-                Button("Sync +3") {
-                    progressManager.simulateDebugSyncGain(3)
-                }
-                Button("Sync +8") {
-                    progressManager.simulateDebugSyncGain(8)
-                }
-            }
-
-            Button("Reset Route") {
-                routeManager.resetDebugRouteProgress(currentTotalMiles: progressManager.totalMiles)
-            }
-
-            Divider()
-                .frame(width: 40)
-                .background(.white.opacity(0.3))
-
-            Button("Gen Routes") {
-                showingRouteGenerator = true
-            }
-
-            Button("Coverage") {
-                showingCoverageAudit = true
-            }
-        }
-        .font(.caption)
-        .fontWeight(.medium)
-        .buttonStyle(.borderedProminent)
-        .tint(.black.opacity(0.5))
-        .controlSize(.mini)
-        .padding(.top, 60)
-        .padding(.trailing, 12)
-    }
-}
-#endif
 
 private struct LookAroundPortalEffectView: View {
     let isPulsing: Bool

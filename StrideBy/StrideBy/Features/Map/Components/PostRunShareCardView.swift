@@ -9,17 +9,23 @@ import SwiftUI
 import UIKit
 
 struct PostRunShareCardView: View {
+    @AppStorage("strideby_distance_unit") private var distanceUnitRawValue = DistanceUnit.miles.rawValue
+
     let route: RunRoute
     let locationName: String
     let milesAdvanced: Double
     let totalMilesOnRoute: Double
 
+    private var distanceUnit: DistanceUnit {
+        DistanceUnit(rawValue: distanceUnitRawValue) ?? .miles
+    }
+
     private var milesAdvancedText: String {
-        milesAdvanced.formatted(.number.precision(.fractionLength(1)))
+        distanceUnit.convert(miles: milesAdvanced).formatted(.number.precision(.fractionLength(1)))
     }
 
     private var totalMilesText: String {
-        totalMilesOnRoute.formatted(.number.precision(.fractionLength(1)))
+        distanceUnit.convert(miles: totalMilesOnRoute).formatted(.number.precision(.fractionLength(1)))
     }
 
     var body: some View {
@@ -42,7 +48,7 @@ struct PostRunShareCardView: View {
                     .tracking(1.8)
 
                 VStack(alignment: .leading, spacing: 14) {
-                    Text("I advanced \(milesAdvancedText) miles")
+                    Text("I advanced \(milesAdvancedText) \(distanceUnit.abbreviation)")
                         .font(.system(size: 72, weight: .black, design: .rounded))
                         .foregroundStyle(.white)
                         .lineSpacing(3)
@@ -62,7 +68,7 @@ struct PostRunShareCardView: View {
                         .font(.system(size: 28, weight: .medium, design: .rounded))
                         .foregroundStyle(.white.opacity(0.84))
 
-                    Text("Now at \(totalMilesText) mi")
+                    Text("Now at \(totalMilesText) \(distanceUnit.abbreviation)")
                         .font(.system(size: 26, weight: .semibold, design: .rounded))
                         .foregroundStyle(.white.opacity(0.84))
                 }

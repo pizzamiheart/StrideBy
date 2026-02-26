@@ -8,16 +8,24 @@
 import SwiftUI
 
 struct SocialScreen: View {
+    private var inviteURL: URL {
+        var components = URLComponents()
+        components.scheme = "strideby"
+        components.host = "join"
+        return components.url ?? URL(string: "strideby://join")!
+    }
+
     var body: some View {
         NavigationStack {
             ContentUnavailableView {
                 Label("No Friends Yet", systemImage: "person.2")
             } description: {
-                Text("Invite friends to join your route and watch each other's progress in real time.")
+                Text("Invite friends to join StrideBy and start your own route.")
             } actions: {
-                Button {
-                    // TODO: Share invite link
-                } label: {
+                ShareLink(
+                    item: inviteURL,
+                    message: Text("Join me on StrideBy and start your own route.")
+                ) {
                     Text("Invite Friends")
                         .fontWeight(.medium)
                 }
