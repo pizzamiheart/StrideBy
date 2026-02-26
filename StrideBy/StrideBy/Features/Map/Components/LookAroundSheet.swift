@@ -8,6 +8,7 @@
 import Foundation
 import MapKit
 import SwiftUI
+import UIKit
 
 /// A sheet that displays Apple Look Around street-level imagery for a given coordinate.
 ///
@@ -19,22 +20,24 @@ import SwiftUI
 /// 5. If nothing found, show a rich satellite card with "Explore Nearest Town" options
 @MainActor
 struct LookAroundSheet: View {
-    @Environment(\.dismiss) private var dismiss
-
     let locationName: String
     let coordinate: CLLocationCoordinate2D
     let seedCoordinates: [CLLocationCoordinate2D]
     let searchQueries: [String]
     let completedMiles: Double
+    let lastRunMiles: Double
     let routeName: String
     let route: RunRoute?
 
+    @Environment(\.dismiss) private var dismiss
+
     @State private var scene: MKLookAroundScene?
+    @State private var captureScene: MKLookAroundScene?
     @State private var isLoading = true
     @State private var resolvedCoordinate: CLLocationCoordinate2D?
-    @State private var showInteractionHint = true
-    @State private var hintPulse = false
-    @State private var hintCanDismiss = false
+    @State private var isPreparingComposer = false
+    @State private var composeError: String?
+    @State private var composerDraft: DropPinDraft?
 
     // POI jump state (Part 2)
     @State private var jumpedPOI: Landmark?
@@ -72,93 +75,94 @@ struct LookAroundSheet: View {
                 await loadScene()
             }
 
-            closeButton
-
             VStack {
-                // Location name badge + jumped POI banner
-                VStack(spacing: 6) {
-                    if scene != nil {
-                        Text(locationName)
-                            .font(.headline)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(.ultraThinMaterial, in: Capsule())
-                    }
-
-                    if let jumped = jumpedPOI, scene != nil {
-                        jumpedBanner(poi: jumped)
-                    } else if isUsingNearbyFallback, scene != nil {
-                        Text("Showing nearest available street view nearby.")
-                            .font(.caption)
+                HStack {
+                    Spacer()
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .bold))
                             .foregroundStyle(.secondary)
+                            .padding(10)
+                            .background(.ultraThinMaterial, in: Circle())
                     }
+                    .padding(.top, 16)
+                    .padding(.trailing, 16)
                 }
-                .padding(.top, 18)
-
                 Spacer()
             }
-            .padding(.leading, 86)
-            .allowsHitTesting(jumpedPOI != nil) // allow hit testing only for "back" button
-
-            if showInteractionHint, scene != nil {
-                interactionHint
-                    .allowsHitTesting(false)
-            }
         }
-        .onAppear {
-            showInteractionHint = true
-            hintCanDismiss = false
-            hintPulse = false
-            withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
-                hintPulse = true
+        .fullScreenCover(item: $composerDraft) { draft in
+            DropPinComposerScreen(draft: draft)
+        }
+        .alert("Couldn’t Capture View", isPresented: Binding(
+            get: { composeError != nil },
+            set: { isPresented in
+                if !isPresented { composeError = nil }
             }
-
-            Task {
-                try? await Task.sleep(for: .milliseconds(900))
-                hintCanDismiss = true
-            }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(composeError ?? "Try again.")
         }
     }
 
     // MARK: - Look Around View
 
     private func lookAroundView(scene: MKLookAroundScene) -> some View {
-        LookAroundPreview(initialScene: scene, allowsNavigation: true)
-            .ignoresSafeArea()
-            .onTapGesture {
-                hideInteractionHint()
+        ZStack(alignment: .topLeading) {
+            LookAroundCaptureView(initialScene: scene) { updatedScene in
+                captureScene = updatedScene
             }
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 1)
-                    .onChanged { _ in
-                        hideInteractionHint()
+                .ignoresSafeArea()
+                .onAppear {
+                    if captureScene == nil {
+                        captureScene = scene
                     }
-            )
-    }
+                }
 
-    // MARK: - Jumped POI Banner
+            Text(locationName)
+                .font(.headline)
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 7)
+                .background(.ultraThinMaterial, in: Capsule())
+                .padding(.leading, 16)
+                .padding(.top, 16)
 
-    private func jumpedBanner(poi: Landmark) -> some View {
-        let milesAway = abs(Int(poi.distanceFromStartMiles - completedMiles))
-        return HStack(spacing: 6) {
-            Text("Showing \(poi.name), \(poi.state)")
-                .font(.caption)
-                .fontWeight(.medium)
-            Text("(\(milesAway) mi from your position)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Button {
-                returnToOriginal()
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.caption)
+            VStack {
+                Spacer()
+                Button {
+                    Task { await prepareComposer(from: scene) }
+                } label: {
+                    Label(
+                        isPreparingComposer ? "Preparing…" : "Share The View",
+                        systemImage: "square.and.arrow.up.fill"
+                    )
+                    .font(.headline)
+                    .fontWeight(.bold)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 13)
+                    .background(
+                        LinearGradient(
+                            colors: [StrideByTheme.accent, Color(red: 0.08, green: 0.32, blue: 0.66)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        ),
+                        in: Capsule()
+                    )
+                    .overlay(
+                        Capsule()
+                            .stroke(.white.opacity(0.35), lineWidth: 1)
+                    )
+                    .shadow(color: .black.opacity(0.28), radius: 10, y: 4)
+                }
+                .disabled(isPreparingComposer)
+                .padding(.bottom, 28)
             }
-            .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(.ultraThinMaterial, in: Capsule())
     }
 
     // MARK: - States
@@ -218,13 +222,9 @@ struct LookAroundSheet: View {
         resolvedCoordinate = nil
         let result = await findBestScene(near: searchCoordinate)
         scene = result.scene
+        captureScene = result.scene
         resolvedCoordinate = result.coordinate
         isLoading = false
-    }
-
-    private var isUsingNearbyFallback: Bool {
-        guard let resolvedCoordinate else { return false }
-        return distanceMeters(from: searchCoordinate, to: resolvedCoordinate) > 5
     }
 
     // MARK: - Search Strategy
@@ -399,48 +399,95 @@ struct LookAroundSheet: View {
             .distance(from: CLLocation(latitude: to.latitude, longitude: to.longitude))
     }
 
+    // MARK: - Share
+
+    private func prepareComposer(from scene: MKLookAroundScene) async {
+        guard !isPreparingComposer else { return }
+        isPreparingComposer = true
+        defer { isPreparingComposer = false }
+
+        let selectedScene = captureScene ?? scene
+
+        guard let lookAroundImage = await snapshotImage(for: selectedScene) else {
+            composeError = "Couldn’t capture this frame yet. Move slightly and try again."
+            return
+        }
+
+        composerDraft = DropPinDraft(
+            capturedImage: lookAroundImage,
+            initialScene: selectedScene,
+            route: route,
+            routeName: routeName,
+            locationName: locationName,
+            completedMiles: completedMiles,
+            lastRunMiles: lastRunMiles
+        )
+    }
+
+    private func snapshotImage(for scene: MKLookAroundScene) async -> UIImage? {
+        let options = MKLookAroundSnapshotter.Options()
+        options.size = CGSize(width: 1080, height: 1320)
+
+        let snapshotter = MKLookAroundSnapshotter(scene: scene, options: options)
+        do {
+            let snapshot = try await snapshotter.snapshot
+            return snapshot.image
+        } catch {
+            debugLog("snapshot failed: \(error.localizedDescription)")
+            return nil
+        }
+    }
+}
+
+private struct LookAroundCaptureView: UIViewControllerRepresentable {
+    let initialScene: MKLookAroundScene
+    var onSceneDidChange: (MKLookAroundScene) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onSceneDidChange: onSceneDidChange)
+    }
+
+    func makeUIViewController(context: Context) -> MKLookAroundViewController {
+        let controller = MKLookAroundViewController(scene: initialScene)
+        controller.isNavigationEnabled = true
+        controller.showsRoadLabels = true
+        controller.badgePosition = .bottomTrailing
+        controller.delegate = context.coordinator
+        return controller
+    }
+
+    func updateUIViewController(_ controller: MKLookAroundViewController, context: Context) {
+        context.coordinator.onSceneDidChange = onSceneDidChange
+        if controller.scene == nil {
+            controller.scene = initialScene
+        }
+    }
+
+    final class Coordinator: NSObject, MKLookAroundViewControllerDelegate {
+        var onSceneDidChange: (MKLookAroundScene) -> Void
+
+        init(onSceneDidChange: @escaping (MKLookAroundScene) -> Void) {
+            self.onSceneDidChange = onSceneDidChange
+        }
+
+        func lookAroundViewControllerDidUpdateScene(_ viewController: MKLookAroundViewController) {
+            if let scene = viewController.scene {
+                onSceneDidChange(scene)
+            }
+        }
+    }
+}
+
+private extension LookAroundSheet {
     // MARK: - UI Components
 
-    private var closeButton: some View {
-        Button("Close") {
-            dismiss()
-        }
-        .buttonStyle(.borderedProminent)
-        .tint(.black.opacity(0.65))
-        .padding(.top, 18)
-        .padding(.leading, 16)
-    }
-
-    private var interactionHint: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "hand.tap")
-                .font(.title2)
-            Text("Tap or drag to look around")
-                .font(.caption)
-                .fontWeight(.medium)
-        }
-        .foregroundStyle(.white)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(.black.opacity(0.5), in: Capsule())
-        .scaleEffect(hintPulse ? 1.05 : 0.95)
-        .opacity(hintPulse ? 1.0 : 0.7)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private func hideInteractionHint() {
-        guard showInteractionHint, hintCanDismiss else { return }
-        withAnimation(.easeOut(duration: 0.2)) {
-            showInteractionHint = false
-        }
-    }
-
-    private func debugLog(_ message: String) {
+    func debugLog(_ message: String) {
         #if DEBUG
         print("LookAroundSheet[\(locationName)]: \(message)")
         #endif
     }
 }
+
 
 private extension CLLocation {
     /// Computes destination coordinate from distance+bearing on a spherical Earth.
@@ -469,26 +516,28 @@ private extension CLLocation {
     }
 }
 
-#Preview("Look Around — NYC") {
+#Preview("Look Around — Paris") {
     LookAroundSheet(
-        locationName: "Times Square, NY",
-        coordinate: CLLocationCoordinate2D(latitude: 40.7580, longitude: -73.9855),
+        locationName: "Louvre, Paris",
+        coordinate: CLLocationCoordinate2D(latitude: 48.8606, longitude: 2.3376),
         seedCoordinates: [],
         searchQueries: [],
         completedMiles: 0,
-        routeName: "Coast to Coast",
-        route: .nycToLA
+        lastRunMiles: 0,
+        routeName: "Paris Arrondissement Tour",
+        route: .parisCityLoop
     )
 }
 
 #Preview("Look Around — No Coverage") {
     LookAroundSheet(
-        locationName: "Hellertown, PA",
-        coordinate: CLLocationCoordinate2D(latitude: 40.6627, longitude: -75.1418),
+        locationName: "Near Luxembourg Gardens",
+        coordinate: CLLocationCoordinate2D(latitude: 48.8462, longitude: 2.3371),
         seedCoordinates: [],
         searchQueries: [],
-        completedMiles: 50,
-        routeName: "Coast to Coast",
-        route: .nycToLA
+        completedMiles: 12,
+        lastRunMiles: 0,
+        routeName: "Paris Arrondissement Tour",
+        route: .parisCityLoop
     )
 }

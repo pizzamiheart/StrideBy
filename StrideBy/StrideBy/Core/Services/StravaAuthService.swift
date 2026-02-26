@@ -23,6 +23,12 @@ final class StravaAuthService {
 
     private let callbackURLScheme = "strideby"
     private let redirectURI = "strideby://strideby"
+    private var clientID: String {
+        Bundle.main.object(forInfoDictionaryKey: "STRAVA_CLIENT_ID") as? String ?? ""
+    }
+    private var clientSecret: String {
+        Bundle.main.object(forInfoDictionaryKey: "STRAVA_CLIENT_SECRET") as? String ?? ""
+    }
 
     // MARK: - Init
 
@@ -78,7 +84,12 @@ final class StravaAuthService {
 
         // Refresh if token expires within the next 5 minutes
         if Int(Date().timeIntervalSince1970) >= expiresAt - 300 {
-            try await refreshTokens()
+            do {
+                try await refreshTokens()
+            } catch {
+                disconnect()
+                throw error
+            }
         }
 
         guard let token = KeychainHelper.load(key: "strava_access_token") else {
@@ -91,9 +102,11 @@ final class StravaAuthService {
 
     @MainActor
     private func requestAuthorizationCode() async throws -> String {
+        try assertSecretsConfigured()
+
         var components = URLComponents(string: "https://www.strava.com/oauth/mobile/authorize")!
         components.queryItems = [
-            URLQueryItem(name: "client_id", value: Secrets.stravaClientID),
+            URLQueryItem(name: "client_id", value: clientID),
             URLQueryItem(name: "redirect_uri", value: redirectURI),
             URLQueryItem(name: "response_type", value: "code"),
             URLQueryItem(name: "scope", value: "read,activity:read_all"),
@@ -131,9 +144,11 @@ final class StravaAuthService {
     }
 
     private func exchangeCodeForTokens(_ code: String) async throws {
+        try assertSecretsConfigured()
+
         let body: [String: Any] = [
-            "client_id": Secrets.stravaClientID,
-            "client_secret": Secrets.stravaClientSecret,
+            "client_id": clientID,
+            "client_secret": clientSecret,
             "code": code,
             "grant_type": "authorization_code",
         ]
@@ -143,8 +158,7 @@ final class StravaAuthService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, _) = try await URLSession.shared.data(for: request)
-        let response = try JSONDecoder().decode(StravaTokenResponse.self, from: data)
+        let response: StravaTokenResponse = try await performRequest(request)
 
         saveTokens(
             accessToken: response.accessToken,
@@ -160,13 +174,15 @@ final class StravaAuthService {
     }
 
     private func refreshTokens() async throws {
+        try assertSecretsConfigured()
+
         guard let refreshToken = KeychainHelper.load(key: "strava_refresh_token") else {
             throw StravaError.notAuthenticated
         }
 
         let body: [String: Any] = [
-            "client_id": Secrets.stravaClientID,
-            "client_secret": Secrets.stravaClientSecret,
+            "client_id": clientID,
+            "client_secret": clientSecret,
             "refresh_token": refreshToken,
             "grant_type": "refresh_token",
         ]
@@ -176,8 +192,7 @@ final class StravaAuthService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, _) = try await URLSession.shared.data(for: request)
-        let response = try JSONDecoder().decode(StravaRefreshResponse.self, from: data)
+        let response: StravaRefreshResponse = try await performRequest(request)
 
         saveTokens(
             accessToken: response.accessToken,
@@ -190,6 +205,43 @@ final class StravaAuthService {
         KeychainHelper.save(key: "strava_access_token", value: accessToken)
         KeychainHelper.save(key: "strava_refresh_token", value: refreshToken)
         KeychainHelper.save(key: "strava_expires_at", value: String(expiresAt))
+    }
+
+    private func assertSecretsConfigured() throws {
+        guard !clientID.isEmpty, !clientSecret.isEmpty else {
+            throw StravaError.apiError(
+                "Strava keys are missing. Add STRAVA_CLIENT_ID and STRAVA_CLIENT_SECRET in Info.plist."
+            )
+        }
+    }
+
+    private func performRequest<Response: Decodable>(_ request: URLRequest) async throws -> Response {
+        do {
+            let (data, rawResponse) = try await URLSession.shared.data(for: request)
+            guard let response = rawResponse as? HTTPURLResponse else {
+                throw StravaError.invalidResponse
+            }
+
+            switch response.statusCode {
+            case 200...299:
+                return try JSONDecoder().decode(Response.self, from: data)
+            case 400...499:
+                if response.statusCode == 401 {
+                    throw StravaError.unauthorized
+                }
+                if response.statusCode == 429 {
+                    throw StravaError.rateLimited
+                }
+                let payload = try? JSONDecoder().decode(StravaAPIErrorResponse.self, from: data)
+                throw StravaError.apiError(payload?.message ?? "Strava request failed.")
+            default:
+                throw StravaError.apiError("Strava is unavailable right now. Please try again.")
+            }
+        } catch let error as StravaError {
+            throw error
+        } catch {
+            throw StravaError.networkError(error)
+        }
     }
 }
 

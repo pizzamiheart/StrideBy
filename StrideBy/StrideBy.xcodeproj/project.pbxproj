@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		A1105A492F3E84A500C7FD09 /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = A1105A482F3E84A500C7FD09 /* Lottie */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		24E589552F3E84A500C7FD09 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -24,6 +28,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		24E58A012F3F8E1100C7FD09 /* AppConfig.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/AppConfig.xcconfig; sourceTree = "<group>"; };
 		24E589472F3E84A200C7FD09 /* StrideBy.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = StrideBy.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		24E589542F3E84A500C7FD09 /* StrideByTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = StrideByTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		24E5895E2F3E84A500C7FD09 /* StrideByUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = StrideByUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -65,6 +70,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1105A492F3E84A500C7FD09 /* Lottie in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -125,6 +131,7 @@
 			);
 			name = StrideBy;
 			packageProductDependencies = (
+				A1105A482F3E84A500C7FD09 /* Lottie */,
 			);
 			productName = StrideBy;
 			productReference = 24E589472F3E84A200C7FD09 /* StrideBy.app */;
@@ -208,6 +215,9 @@
 			);
 			mainGroup = 24E5893E2F3E84A200C7FD09;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				A1105A472F3E84A500C7FD09 /* XCRemoteSwiftPackageReference "lottie-spm" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 24E589482F3E84A200C7FD09 /* Products */;
 			projectDirPath = "";
@@ -405,6 +415,7 @@
 		};
 		24E589692F3E84A500C7FD09 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 24E58A012F3F8E1100C7FD09 /* AppConfig.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -438,6 +449,7 @@
 		};
 		24E5896A2F3E84A500C7FD09 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 24E58A012F3F8E1100C7FD09 /* AppConfig.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -593,6 +605,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A1105A472F3E84A500C7FD09 /* XCRemoteSwiftPackageReference "lottie-spm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/airbnb/lottie-spm.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 4.5.2;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A1105A482F3E84A500C7FD09 /* Lottie */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A1105A472F3E84A500C7FD09 /* XCRemoteSwiftPackageReference "lottie-spm" */;
+			productName = Lottie;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 24E5893F2F3E84A200C7FD09 /* Project object */;
 }

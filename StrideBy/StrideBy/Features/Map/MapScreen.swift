@@ -16,8 +16,15 @@ private struct LookAroundTarget: Identifiable {
     let seedCoordinates: [CLLocationCoordinate2D]
     let searchQueries: [String]
     let completedMiles: Double
+    let lastRunMiles: Double
     let routeName: String
     let route: RunRoute?
+}
+
+private struct PostRunCelebration: Identifiable {
+    let id = UUID()
+    let milesAdvanced: Double
+    let locationName: String
 }
 
 struct MapScreen: View {
@@ -25,13 +32,18 @@ struct MapScreen: View {
     @Environment(RunProgressManager.self) private var progressManager
     @Environment(RouteManager.self) private var routeManager
     @Environment(RouteGeometryManager.self) private var routeGeometryManager
+    @Environment(AnalyticsService.self) private var analytics
+    @AppStorage("strideby_distance_unit") private var distanceUnitRawValue = DistanceUnit.miles.rawValue
 
     @State private var cameraPosition: MapCameraPosition = .automatic
     @State private var lookAroundTarget: LookAroundTarget?
-    #if DEBUG
-    @State private var showingRouteGenerator = false
-    @State private var showingCoverageAudit = false
-    #endif
+    @State private var postRunCelebration: PostRunCelebration?
+    @State private var celebrationDismissTask: Task<Void, Never>?
+    @State private var handledSyncRevision = 0
+    @State private var shareItems: [Any] = []
+    @State private var showingShareSheet = false
+    @State private var showPortalEffect = false
+    @State private var portalPulse = false
 
     private var route: RunRoute? {
         routeManager.activeRoute
@@ -70,6 +82,20 @@ struct MapScreen: View {
             if let route {
                 // Full-bleed map
                 Map(position: $cameraPosition) {
+
+                    // Route glow — wider halo behind completed segment
+                    MapPolyline(coordinates: route.completedCoordinates(
+                        miles: completedMiles,
+                        using: activeCoordinates(for: route)
+                    ))
+                        .stroke(
+                            StrideByTheme.accentGlow,
+                            style: StrokeStyle(
+                                lineWidth: 14,
+                                lineCap: .round,
+                                lineJoin: .round
+                            )
+                        )
 
                     // Completed route — accent color
                     MapPolyline(coordinates: route.completedCoordinates(
@@ -125,6 +151,21 @@ struct MapScreen: View {
                         ConnectStravaCard()
                     }
 
+                    if let postRunCelebration {
+                        PostRunCelebrationCard(
+                            milesAdvanced: postRunCelebration.milesAdvanced,
+                            locationName: postRunCelebration.locationName,
+                            onDismiss: dismissCelebration,
+                            onShare: {
+                                shareCelebration(
+                                    postRunCelebration,
+                                    route: route
+                                )
+                            }
+                        )
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+
                     RouteProgressCard(
                         route: route,
                         progress: progress,
@@ -149,27 +190,37 @@ struct MapScreen: View {
 
                                 let primaryName = route.nearestLocationName(atMiles: completedMiles)
 
-                                lookAroundTarget = LookAroundTarget(
+                                let target = LookAroundTarget(
                                     name: primaryName,
                                     coordinate: primaryCoord,
                                     seedCoordinates: [coord] + routeCandidates,
                                     searchQueries: [],
                                     completedMiles: completedMiles,
+                                    lastRunMiles: progressManager.latestRunMiles,
                                     routeName: route.name,
                                     route: route
                                 )
+                                launchLookAroundPortal(to: target)
                             }
                         }
                     )
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 8)
+                .animation(StrideByTheme.defaultSpring, value: postRunCelebration?.id)
             }
         }
-        .overlay(alignment: .topTrailing) {
-            #if DEBUG
-            DebugMilesOverlay(progressManager: progressManager, routeManager: routeManager, showingRouteGenerator: $showingRouteGenerator, showingCoverageAudit: $showingCoverageAudit)
-            #endif
+        .overlay(alignment: .top) {
+            if let route {
+                MapRouteHeader(routeName: route.name)
+            }
+        }
+        .overlay {
+            if showPortalEffect {
+                LookAroundPortalEffectView(isPulsing: portalPulse)
+                    .transition(.opacity)
+                    .allowsHitTesting(false)
+            }
         }
         .task {
             // Set initial camera to the active route's bounding region
@@ -207,6 +258,17 @@ struct MapScreen: View {
                 }
             }
         }
+        .onChange(of: progressManager.syncRevision) { _, revision in
+            guard revision > handledSyncRevision else { return }
+            handledSyncRevision = revision
+
+            guard progressManager.lastSyncGainMiles > 0, let route else { return }
+            let locationName = route.nearestLocationName(atMiles: completedMiles)
+            showCelebration(
+                milesAdvanced: progressManager.lastSyncGainMiles,
+                locationName: locationName
+            )
+        }
         .onChange(of: isRouteComplete) { _, complete in
             // Auto-mark route complete when threshold is crossed
             if complete {
@@ -220,18 +282,29 @@ struct MapScreen: View {
                 seedCoordinates: target.seedCoordinates,
                 searchQueries: target.searchQueries,
                 completedMiles: target.completedMiles,
+                lastRunMiles: target.lastRunMiles,
                 routeName: target.routeName,
                 route: target.route
             )
         }
-        #if DEBUG
-        .sheet(isPresented: $showingRouteGenerator) {
-            RouteGeneratorSheet()
+        .sheet(isPresented: $showingShareSheet) {
+            ShareSheet(
+                activityItems: shareItems,
+                onComplete: { completed, activityType in
+                    if completed {
+                        analytics.track("share_completed", properties: [
+                            "surface": "post_run_celebration",
+                            "activity_type": activityType ?? "unknown"
+                        ])
+                    } else {
+                        analytics.track("share_cancelled", properties: [
+                            "surface": "post_run_celebration",
+                            "activity_type": activityType ?? "none"
+                        ])
+                    }
+                }
+            )
         }
-        .sheet(isPresented: $showingCoverageAudit) {
-            CoverageAuditSheet()
-        }
-        #endif
     }
 
     private func activeCoordinates(for route: RunRoute) -> [CLLocationCoordinate2D] {
@@ -264,6 +337,103 @@ struct MapScreen: View {
             )
         )
     }
+
+    private func launchLookAroundPortal(to target: LookAroundTarget) {
+        guard lookAroundTarget == nil else { return }
+
+        portalPulse = false
+        withAnimation(.easeIn(duration: 0.12)) {
+            showPortalEffect = true
+        }
+
+        Task {
+            // Brief blackout beat before the warp opens
+            try? await Task.sleep(for: .milliseconds(130))
+            withAnimation(.easeOut(duration: 0.38)) {
+                portalPulse = true
+            }
+
+            try? await Task.sleep(for: .milliseconds(340))
+            lookAroundTarget = target
+
+            withAnimation(.easeOut(duration: 0.20)) {
+                showPortalEffect = false
+            }
+            portalPulse = false
+        }
+    }
+
+    private func showCelebration(milesAdvanced: Double, locationName: String) {
+        celebrationDismissTask?.cancel()
+        postRunCelebration = PostRunCelebration(
+            milesAdvanced: milesAdvanced,
+            locationName: locationName
+        )
+        analytics.track("post_run_celebration_shown", properties: [
+            "route_id": route?.id ?? "unknown",
+            "location_name": locationName,
+            "miles_advanced": milesAdvanced.formatted(.number.precision(.fractionLength(2)))
+        ])
+        celebrationDismissTask = Task {
+            try? await Task.sleep(for: .seconds(9))
+            if !Task.isCancelled {
+                await MainActor.run {
+                    dismissCelebration()
+                }
+            }
+        }
+    }
+
+    private func dismissCelebration() {
+        celebrationDismissTask?.cancel()
+        celebrationDismissTask = nil
+        postRunCelebration = nil
+    }
+
+    @MainActor
+    private func shareCelebration(_ celebration: PostRunCelebration, route: RunRoute) {
+        analytics.track("share_tap", properties: [
+            "surface": "post_run_celebration",
+            "route_id": route.id,
+            "location_name": celebration.locationName
+        ])
+        guard let image = PostRunShareCardRenderer.makeStoryImage(
+            route: route,
+            locationName: celebration.locationName,
+            milesAdvanced: celebration.milesAdvanced,
+            totalMilesOnRoute: completedMiles
+        ) else {
+            analytics.track("share_prepare_failed", properties: [
+                "surface": "post_run_celebration",
+                "route_id": route.id
+            ])
+            return
+        }
+
+        let caption = shareCaption(
+            route: route,
+            locationName: celebration.locationName,
+            milesAdvanced: celebration.milesAdvanced
+        )
+        shareItems = [caption, image]
+        analytics.track("share_sheet_opened", properties: [
+            "surface": "post_run_celebration",
+            "route_id": route.id
+        ])
+        showingShareSheet = true
+    }
+
+    private func shareCaption(route: RunRoute, locationName: String, milesAdvanced: Double) -> String {
+        let unit = DistanceUnit(rawValue: distanceUnitRawValue) ?? .miles
+        let distanceText = unit.convert(miles: milesAdvanced).formatted(.number.precision(.fractionLength(1)))
+        let unitLabel = unit.abbreviation
+        let presets = [
+            "Ran in my neighborhood, landed in \(locationName).",
+            "Cardio passport stamped: \(locationName).",
+            "Moved \(distanceText) \(unitLabel) on \(route.name)."
+        ]
+        return presets.randomElement() ?? presets[0]
+    }
 }
 
 // MARK: - Route Endpoint Dots
@@ -294,56 +464,97 @@ private struct RouteDotView: View {
     }
 }
 
-// MARK: - Debug Overlay
+// MARK: - Top Branded Header
 
-#if DEBUG
-private struct DebugMilesOverlay: View {
-    let progressManager: RunProgressManager
-    let routeManager: RouteManager
-    @Binding var showingRouteGenerator: Bool
-    @Binding var showingCoverageAudit: Bool
+private struct MapRouteHeader: View {
+    let routeName: String
 
     var body: some View {
-        VStack(spacing: 6) {
-            Text("DEBUG")
-                .font(.caption2)
-                .fontWeight(.bold)
-                .foregroundStyle(.white.opacity(0.7))
+        VStack(spacing: 0) {
+            Color.clear.frame(height: 0)
 
-            Button("+50 mi") {
-                progressManager.addDebugMiles(50)
+            HStack {
+                Text(routeName.uppercased())
+                    .font(.system(.caption, design: .rounded))
+                    .fontWeight(.bold)
+                    .foregroundStyle(.white.opacity(0.8))
+                    .tracking(1.0)
+
+                Spacer()
             }
-
-            Button("+200 mi") {
-                progressManager.addDebugMiles(200)
-            }
-
-            Button("Reset Route") {
-                routeManager.resetDebugRouteProgress(currentTotalMiles: progressManager.totalMiles)
-            }
-
-            Divider()
-                .frame(width: 40)
-                .background(.white.opacity(0.3))
-
-            Button("Gen Routes") {
-                showingRouteGenerator = true
-            }
-
-            Button("Coverage") {
-                showingCoverageAudit = true
-            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
         }
-        .font(.caption)
-        .fontWeight(.medium)
-        .buttonStyle(.borderedProminent)
-        .tint(.black.opacity(0.5))
-        .controlSize(.mini)
-        .padding(.top, 60)
-        .padding(.trailing, 12)
+        .background(
+            LinearGradient(
+                colors: [.black.opacity(0.5), .black.opacity(0.2), .clear],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea(edges: .top)
+        )
     }
 }
-#endif
+
+private struct LookAroundPortalEffectView: View {
+    let isPulsing: Bool
+
+    var body: some View {
+        ZStack {
+            // Dark "void" moment before entering the portal.
+            Color.black.opacity(isPulsing ? 0.38 : 0.92)
+                .ignoresSafeArea()
+
+            PortalTunnelRingsView(isPulsing: isPulsing)
+
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            StrideByTheme.accent.opacity(0.9),
+                            .blue.opacity(0.75),
+                            .clear
+                        ],
+                        center: .center,
+                        startRadius: 10,
+                        endRadius: 220
+                    )
+                )
+                .frame(width: isPulsing ? 520 : 120, height: isPulsing ? 520 : 120)
+                .blur(radius: isPulsing ? 0 : 6)
+
+            VStack(spacing: 10) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 34, weight: .semibold))
+                    .foregroundStyle(.white)
+                Text("Entering Look Around")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+            }
+            .opacity(isPulsing ? 1 : 0.65)
+            .scaleEffect(isPulsing ? 1.0 : 0.85)
+        }
+    }
+}
+
+private struct PortalTunnelRingsView: View {
+    let isPulsing: Bool
+
+    var body: some View {
+        ZStack {
+            ForEach(0..<5, id: \.self) { index in
+                Circle()
+                    .strokeBorder(.white.opacity(0.13 - (Double(index) * 0.02)), lineWidth: 2)
+                    .frame(
+                        width: (isPulsing ? 560 : 180) + (CGFloat(index) * 90),
+                        height: (isPulsing ? 560 : 180) + (CGFloat(index) * 90)
+                    )
+                    .blur(radius: isPulsing ? 0 : 2)
+            }
+        }
+        .animation(.easeOut(duration: 0.42), value: isPulsing)
+    }
+}
 
 #Preview {
     MapScreen()
@@ -351,4 +562,5 @@ private struct DebugMilesOverlay: View {
         .environment(RunProgressManager())
         .environment(RouteManager())
         .environment(RouteGeometryManager())
+        .environment(AnalyticsService())
 }

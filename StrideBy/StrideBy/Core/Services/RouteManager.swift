@@ -11,15 +11,16 @@ import Observation
 /// Manages which route the user is currently running and tracks starting mileage
 /// so that only new miles (after selecting a route) count toward it.
 ///
-/// **First route (NYC→LA)** starts with `startingMiles = 0` so lifetime miles count.
+/// **First route** starts with `startingMiles = 0` so lifetime miles count.
 /// **Subsequent routes** start from the user's current total miles when selected,
 /// so only new runs count toward the new route.
 @Observable
 final class RouteManager {
+    private static let defaultRouteID = "paris-city-loop"
 
     // MARK: - Persisted State
 
-    /// The route ID key for the active route (e.g. "nyc-to-la").
+    /// The route ID key for the active route (e.g. "paris-city-loop").
     var activeRouteKey: String {
         didSet { UserDefaults.standard.set(activeRouteKey, forKey: Keys.activeRoute) }
     }
@@ -42,15 +43,26 @@ final class RouteManager {
     init() {
         let defaults = UserDefaults.standard
 
-        // Default to NYC→LA with startingMiles = 0 on first launch
+        // Default to the first catalog route with startingMiles = 0 on first launch
         if defaults.string(forKey: Keys.activeRoute) == nil {
-            defaults.set("nyc-to-la", forKey: Keys.activeRoute)
+            defaults.set(Self.defaultRouteID, forKey: Keys.activeRoute)
             defaults.set(0.0, forKey: Keys.startingMiles)
         }
 
-        self.activeRouteKey = defaults.string(forKey: Keys.activeRoute) ?? "nyc-to-la"
+        let persistedRouteKey = defaults.string(forKey: Keys.activeRoute) ?? Self.defaultRouteID
+        self.activeRouteKey = RunRoute.route(forKey: persistedRouteKey) != nil
+            ? persistedRouteKey
+            : Self.defaultRouteID
         self.startingMiles = defaults.double(forKey: Keys.startingMiles)
-        self.completedRouteKeys = Set(defaults.stringArray(forKey: Keys.completedRoutes) ?? [])
+        self.completedRouteKeys = Set(
+            (defaults.stringArray(forKey: Keys.completedRoutes) ?? [])
+                .filter { RunRoute.route(forKey: $0) != nil }
+        )
+
+        if activeRouteKey != persistedRouteKey {
+            defaults.set(activeRouteKey, forKey: Keys.activeRoute)
+        }
+        defaults.set(Array(completedRouteKeys), forKey: Keys.completedRoutes)
     }
 
     // MARK: - Computed

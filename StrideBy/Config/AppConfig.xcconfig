@@ -1,0 +1,7 @@
+// Shared app configuration for committed defaults.
+// Local secrets override these via optional include below.
+STRAVA_CLIENT_ID =
+STRAVA_CLIENT_SECRET =
+
+// Local-only, gitignored secrets.
+#include? "StravaSecrets.xcconfig"

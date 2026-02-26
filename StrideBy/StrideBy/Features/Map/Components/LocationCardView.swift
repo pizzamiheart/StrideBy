@@ -204,11 +204,11 @@ struct LocationCardView: View {
 
 #Preview {
     LocationCardView(
-        locationName: "Hellertown, PA",
-        coordinate: CLLocationCoordinate2D(latitude: 40.6627, longitude: -75.1418),
-        completedMiles: 50,
-        routeName: "Coast to Coast",
-        route: .nycToLA,
+        locationName: "Saint-Germain, Paris",
+        coordinate: CLLocationCoordinate2D(latitude: 48.8546, longitude: 2.3339),
+        completedMiles: 12,
+        routeName: "Paris Arrondissement Tour",
+        route: .parisCityLoop,
         onExplorePOI: { poi in
             print("Explore: \(poi.name)")
         }

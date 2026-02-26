@@ -21,6 +21,7 @@ Pods/
 # Secrets and config
 .env
 **/Config/Secrets.swift
+StrideBy/Config/StravaSecrets.xcconfig
 supabase/.env
 
 # OS files

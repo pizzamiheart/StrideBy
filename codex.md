@@ -67,6 +67,19 @@ StrideBy/                           # Xcode project root
 - Supabase edge functions: `supabase functions serve` (local dev), `supabase functions deploy` (production)
 - SwiftLint: `swiftlint` (if installed)
 
+## Agent Handoff Workflow (Claude <-> Codex)
+- Canonical development worktree is `/Users/andrewginn/random` on branch `main` (usually with Claude).
+- Codex typically runs in `/Users/andrewginn/random-codex` as a separate worktree; `main` may be unavailable there if already checked out in `/random`.
+- At handoff time, always provide from the active worktree:
+  - `git branch --show-current`
+  - `git rev-parse --short HEAD`
+- If branch/commit do not match between worktrees, use the provided commit hash as the baseline source of truth.
+- If `main` cannot be checked out in `/random-codex`, create a continuation branch from the provided commit, apply changes there, and stage/commit for merge back into `/random` `main`.
+- Before editing after handoff, verify:
+  - Current branch + HEAD
+  - `git status --short` for unexpected local changes
+  - Route/work item artifacts to continue exactly where the other agent stopped
+
 ## Strava API Notes
 - OAuth callback URL must be registered in Strava app settings
 - Webhook subscription requires a public callback URL (use Supabase Edge Function)

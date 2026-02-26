@@ -74,6 +74,10 @@ enum StravaError: LocalizedError {
     case notAuthenticated
     case noAuthorizationCode
     case tokenExchangeFailed
+    case invalidResponse
+    case unauthorized
+    case rateLimited
+    case apiError(String)
     case networkError(Error)
 
     var errorDescription: String? {
@@ -84,8 +88,22 @@ enum StravaError: LocalizedError {
             return "Strava authorization was cancelled."
         case .tokenExchangeFailed:
             return "Could not connect to Strava. Please try again."
+        case .invalidResponse:
+            return "Received an invalid response from Strava."
+        case .unauthorized:
+            return "Your Strava session expired. Please reconnect."
+        case .rateLimited:
+            return "Strava rate limit reached. Try again in a few minutes."
+        case .apiError(let message):
+            return message
         case .networkError(let error):
             return error.localizedDescription
         }
     }
+}
+
+// MARK: - API Error Response
+
+struct StravaAPIErrorResponse: Decodable {
+    let message: String?
 }
